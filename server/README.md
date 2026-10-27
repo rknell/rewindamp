@@ -232,7 +232,8 @@ cross-origin API access or public file listings.
 - `POST /api/feeds`: `url`, `title`, `mode`, `years`, optional Unix-seconds `since`;
   `only_if_new=true` preserves an existing subscription instead of changing its pass.
 - `POST /api/feeds/{id}/refresh`: queue a refresh (JSON body `{}`).
-- `GET /api/episodes?feed_id=…&unplayed=true&offset=0&limit=100`
+- `GET /api/episodes?feed_id=…&unplayed=true&offset=0&limit=100&order=oldest&hide_played=true`
+  (`order` is `oldest` or `newest`, default `newest`; `hide_played` also works outside the inbox).
 - `POST /api/episodes/{id}/download`: select an episode explicitly (JSON body `{}`).
 - `GET` / `HEAD /api/episodes/{id}/audio`: authenticated byte ranges for seeking/downloading.
 - `POST /api/progress/{id}`: unique `event_id`, current `epoch`, `position` in seconds,

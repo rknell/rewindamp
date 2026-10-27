@@ -40,6 +40,14 @@ class ArchiveTests(unittest.TestCase):
         feed=self.feed();self.archive.import_feed(feed,rss(('stable',NOW-100)));return self.archive.episodes()[0]['id']
     def event(self,id,event_id='event-00001',**values):
         return self.archive.progress(id,dict(event_id=event_id,**{'observed':self.now,**values}))
+    def test_episode_direction_filter_and_pagination(self):
+        feed=self.feed();self.archive.import_feed(feed,rss(('old',NOW-300),('middle',NOW-200),('new',NOW-100)))
+        newest=self.archive.episodes(feed);self.assertEqual([e['title'] for e in newest],['Episode new','Episode middle','Episode old'])
+        self.event(newest[1]['id'],action='played')
+        self.assertEqual([e['title'] for e in self.archive.episodes(feed,order='oldest',hide_played=True)],['Episode old','Episode new'])
+        self.assertEqual(self.archive.episodes(feed,offset=1,limit=1,order='oldest',hide_played=True)[0]['title'],'Episode new')
+        with self.assertRaises(ValueError):self.archive.episodes(order='invalid')
+
     def test_rolling_years_and_missing_dates(self):
         f=self.feed('years',2);self.archive.import_feed(f,rss(('recent',NOW-100),('old',years_ago(NOW,2)-1),('edge',years_ago(NOW,2)),('undated',None),('future',NOW+100)))
         rows={r['title']:r for r in self.archive.episodes()}

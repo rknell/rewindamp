@@ -50,7 +50,7 @@ final class PodcastLibrary {
         cache=new SimpleCache(new File(store.directory,"podcast-audio"),new NoOpCacheEvictor(),database);
         manager=new DownloadManager(context,new androidx.media3.exoplayer.offline.DefaultDownloadIndex(database,"podcast_"+store.scope),
             new androidx.media3.exoplayer.offline.DefaultDownloaderFactory(new CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(http()),java.util.concurrent.Executors.newFixedThreadPool(2)));
-        manager.setMaxParallelDownloads(2);manager.setRequirements(new Requirements(Requirements.NETWORK));manager.setMinRetryCount(3);manager.resumeDownloads();
+        manager.setMaxParallelDownloads(2);applyDownloadRequirements();manager.setMinRetryCount(3);if(store.read("podcast-preferences").optBoolean("downloads_paused"))manager.pauseDownloads();else manager.resumeDownloads();
     }
     DefaultHttpDataSource.Factory http(){return new DefaultHttpDataSource.Factory().setUserAgent("Rewindamp/0.4").setDefaultRequestProperties(Map.of("Authorization",api.authorization()));}
     androidx.media3.datasource.DataSource.Factory source(){return new CacheDataSource.Factory().setCache(cache).setCacheWriteDataSinkFactory(null).setUpstreamDataSourceFactory(new DefaultDataSource.Factory(context,http())).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);}
@@ -58,8 +58,12 @@ final class PodcastLibrary {
         try{JSONObject value=api.request("/api/feeds",null);store.write("podcast-feeds",value);return value.getJSONArray("items");}
         catch(Exception e){if(e.getMessage()!=null&&e.getMessage().contains("HTTP 401"))throw e;JSONArray cached=store.read("podcast-feeds").optJSONArray("items");if(cached!=null)return cached;throw e;}
     }
-    List<JSONObject> episodes(String feed,boolean inbox,int offset)throws Exception{
-        String path="/api/episodes?limit=100&offset="+offset+"&unplayed="+inbox+(feed==null?"":"&feed_id="+Uri.encode(feed));
+    boolean oldest(String feed){return store.read("podcast-preferences").optBoolean("oldest:"+(feed==null?"all":feed));}
+    boolean showPlayed(){return store.read("podcast-preferences").optBoolean("show_played");}
+    void preference(String key,boolean value){try{JSONObject prefs=store.read("podcast-preferences");prefs.put(key,value);store.writeChecked("podcast-preferences",prefs);}catch(Exception e){throw new IllegalStateException(e);}}
+    List<JSONObject> episodes(String feed,boolean inbox,int offset)throws Exception{return episodes(feed,inbox,offset,false,false);}
+    List<JSONObject> episodes(String feed,boolean inbox,int offset,boolean oldest,boolean hidePlayed)throws Exception{
+        String path="/api/episodes?limit=100&offset="+offset+"&unplayed="+inbox+(feed==null?"":"&feed_id="+Uri.encode(feed))+"&order="+(oldest?"oldest":"newest")+"&hide_played="+hidePlayed;
         JSONObject value;boolean fresh;
         try{value=api.request(path,null);fresh=true;store.write(path,value);}
         catch(Exception e){fresh=false;value=store.read(path);if(!value.has("items"))throw e;}
@@ -109,6 +113,17 @@ final class PodcastLibrary {
             }
         }}catch(Exception ignored){/* Durable journal retries idempotently on the service tick or manual sync. */}finally{synchronized(this){syncing=false;}}
     }
+    boolean wifiOnly(){return store.read("podcast-preferences").optBoolean("wifi_only",true);}
+    int autoDownloads(){return Math.max(0,Math.min(5,store.read("podcast-preferences").optInt("auto_downloads")));}
+    void applyDownloadRequirements(){manager.setRequirements(new Requirements(Requirements.NETWORK|(wifiOnly()?Requirements.NETWORK_UNMETERED:0)));}
+    void wifiOnly(boolean value){preference("wifi_only",value);applyDownloadRequirements();}
+    void autoDownloads(int count){try{JSONObject prefs=store.read("podcast-preferences");prefs.put("auto_downloads",count);store.writeChecked("podcast-preferences",prefs);}catch(Exception e){throw new IllegalStateException(e);}}
+    void pauseDownloads(boolean paused){preference("downloads_paused",paused);if(paused)manager.pauseDownloads();else manager.resumeDownloads();}
+    String offlineSummary(){long bytes=0;int complete=0,pending=0,failed=0;try(var cursor=manager.getDownloadIndex().getDownloads()){while(cursor.moveToNext()){Download d=cursor.getDownload();bytes+=d.getBytesDownloaded();if(d.state==Download.STATE_COMPLETED)complete++;else if(d.state==Download.STATE_FAILED)failed++;else pending++;}}catch(Exception ignored){}
+        return complete+" saved · "+pending+" pending · "+failed+" failed\n"+String.format(java.util.Locale.ROOT,"%.1f MB on phone · %.1f GB free",bytes/1048576.0,store.directory.getUsableSpace()/1073741824.0);}
+    void sleep(long until,boolean end,String id){try{store.writeChecked("podcast-sleep",new JSONObject().put("until",until).put("end",end).put("id",id));}catch(Exception e){throw new IllegalStateException(e);}}
+    void clearSleep(){sleep(0,false,"");}
+    String sleepDescription(){JSONObject timer=store.read("podcast-sleep");if(timer.optBoolean("end"))return "end of episode";long remaining=timer.optLong("until")-System.currentTimeMillis();return remaining>0?Math.max(1,(remaining+59999)/60000)+" min":"off";}
     Download download(String id){try{return manager.getDownloadIndex().getDownload(id);}catch(Exception e){return null;}}
     boolean complete(String id){Download d=download(id);return d!=null&&d.state==Download.STATE_COMPLETED;}
     List<JSONObject> downloaded(){List<JSONObject> result=new ArrayList<>();try(var cursor=manager.getDownloadIndex().getDownloads()){while(cursor.moveToNext()){Download d=cursor.getDownload();JSONObject e=episode(d.request.id);if(e.has("id"))result.add(e);}}catch(Exception ignored){}return result;}

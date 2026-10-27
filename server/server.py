@@ -363,15 +363,17 @@ class Archive:
                 self.db.execute('UPDATE feeds SET error=?,last_refresh=? WHERE id=?',('Feed refresh failed; check the RSS URL or retry later',self.clock(),feed_id))
             return None
 
-    def episodes(self, feed_id=None, unplayed=False, offset=0, limit=100):
+    def episodes(self, feed_id=None, unplayed=False, offset=0, limit=100, order="newest", hide_played=False):
+        if order not in ("oldest","newest"): raise ValueError("Invalid episode order")
         where, args = [], []
         if feed_id: where.append('e.feed_id=?'); args.append(feed_id)
         if unplayed: where.append("COALESCE(p.state,'unplayed') NOT IN ('played','dismissed') AND (e.eligible=1 OR e.file IS NOT NULL)")
+        if hide_played: where.append("COALESCE(p.state,'unplayed') NOT IN ('played','dismissed')")
         rows = self.rows('''SELECT e.id,e.feed_id,e.title,e.published,e.duration,e.eligible,e.file IS NOT NULL AS downloaded,e.bytes,e.error,
             f.title AS show_title,COALESCE(p.position,0) AS position,COALESCE(p.state,'unplayed') AS state,
             COALESCE(p.epoch,0) AS epoch FROM episodes e JOIN feeds f ON e.feed_id=f.id
             LEFT JOIN progress p ON p.episode_id=e.id '''+(' WHERE '+' AND '.join(where) if where else '')+
-            ' ORDER BY e.published DESC,e.id LIMIT ? OFFSET ?',tuple(args+[max(1,min(500,limit)),max(0,offset)]))
+            ' ORDER BY e.published '+('ASC' if order=='oldest' else 'DESC')+',e.id LIMIT ? OFFSET ?',tuple(args+[max(1,min(500,limit)),max(0,offset)]))
         for row in rows:
             row['downloaded'] = bool(row['downloaded'])
             row['eligible'] = bool(row['eligible'])
@@ -538,7 +540,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/feeds':
                 return self.reply(200,{'items':self.archive.rows('SELECT f.*, (SELECT COUNT(*) FROM episodes e WHERE e.feed_id=f.id AND e.file IS NOT NULL) AS downloaded FROM feeds f ORDER BY title')})
             if path == '/api/episodes':
-                return self.reply(200,{'items':self.archive.episodes(query.get('feed_id',[None])[0],query.get('unplayed',['false'])[0]=='true',int(query.get('offset',['0'])[0]),int(query.get('limit',['100'])[0]))})
+                return self.reply(200,{'items':self.archive.episodes(query.get('feed_id',[None])[0],query.get('unplayed',['false'])[0]=='true',int(query.get('offset',['0'])[0]),int(query.get('limit',['100'])[0]),query.get('order',['newest'])[0],query.get('hide_played',['false'])[0]=='true')})
             match = re.fullmatch(r'/api/episodes/([a-f0-9]{32})/audio',path)
             if match: return self.audio(match[1])
             return self.reply(404,{'error':'Not found'})
