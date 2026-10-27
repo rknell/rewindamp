@@ -150,8 +150,8 @@ public final class PodcastActivity extends Activity {
     interface Job{String run()throws Exception;}
     void request(Job task){io.execute(()->{try{String message=task.run();handler.post(()->{if(!destroyed)say(message);});}catch(Exception e){handler.post(()->say("Podcast server request failed · retry when connected"));}});}
     void sleepTimer(){
-        new AlertDialog.Builder(this).setTitle("Sleep timer · "+library.sleepDescription()).setItems(new String[]{"Off","15 minutes","30 minutes","45 minutes","60 minutes","End of this episode"},(d,i)->{
-            if(i==0)library.clearSleep();else if(i==5){if(player==null||player.getCurrentMediaItem()==null){say("Start an episode before setting its end timer");return;}library.sleep(0,true,player.getCurrentMediaItem().mediaId);}else library.sleep(System.currentTimeMillis()+new int[]{0,15,30,45,60}[i]*60000L,false,"");say("Sleep timer · "+library.sleepDescription());update();
+        new AlertDialog.Builder(this).setTitle("Sleep timer · "+library.sleepDescription()).setItems(new String[]{"Off","15 minutes","30 minutes","60 minutes","90 minutes","120 minutes","End of this episode"},(d,i)->{
+            if(i==0)library.clearSleep();else if(i==6){if(player==null||player.getCurrentMediaItem()==null){say("Start an episode before setting its end timer");return;}library.sleep(0,true,player.getCurrentMediaItem().mediaId);}else library.sleep(System.currentTimeMillis()+new int[]{0,15,30,60,90,120}[i]*60000L,false,"");say("Sleep timer · "+library.sleepDescription());update();
         }).setNegativeButton("Cancel",null).show();
     }
     void offlineSettings(){

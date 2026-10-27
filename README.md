@@ -44,7 +44,7 @@ Android stores an encrypted session token rather than the password. Searches use
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Local development builds are **0.4.4**.
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.5**.
 Music and podcast decks share a bottom Music / Podcasts bar, including their connection
 and search screens. Switching tabs leaves playback alone; starting the other kind of audio
 uses Android audio focus to pause the first player.
@@ -66,7 +66,7 @@ a playing queue; starting another episode creates a new queue from that view. Au
 completion marks the finished episode played. Queue, position and speed restore paused
 after a service restart. The episode menu retains played/reset, dismiss and phone-copy actions.
 
-The moon in the podcast header opens a sleep timer: 15, 30, 45 or 60 minutes, or pause at the
+The moon in the podcast header opens a sleep timer: 15, 30, 60, 90 or 120 minutes, or pause at the
 end of the current episode. It runs in the playback service while the screen is off. A timed
 pause clears itself; changing episodes cancels an end-of-episode timer.
 
