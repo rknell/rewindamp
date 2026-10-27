@@ -1,8 +1,8 @@
-# Jellyamp
+# Rewindamp
 
 **Queue a vibe. A classic Winamp-inspired Jellyfin music player for Android.**
 
-Jellyamp makes it quick to turn your own music collection into the soundtrack for a party,
+Rewindamp makes it quick to turn your own music collection into the soundtrack for a party,
 a road trip, or whatever mood you are putting together. Tap a track to start listening,
 then keep tapping to build the queue without replacing the song that is playing. Search,
 add a bunch of tracks, and save the whole queue as a Jellyfin playlist for next time.
@@ -19,7 +19,7 @@ phones and Android Auto, and thoughtful UI polish all help. See [Contributing](C
 - MIT licensed. Bring your own Jellyfin server and account. Android 8.0 or newer.
 
 <p>
-  <img src="docs/images/player.png" width="300" alt="Jellyamp classic player, equalizer and queue builder with fictional demo music" />
+  <img src="docs/images/player.png" width="300" alt="Rewindamp classic player, equalizer and queue builder with fictional demo music" />
   <img src="docs/images/search.png" width="300" alt="Artist search with live results and quick queue additions, using fictional demo music" />
 </p>
 
@@ -28,15 +28,15 @@ no original Winamp skin images are bundled. Demo mode uses fictional titles.
 
 ## Install
 
-Get the APK from [GitHub Releases](https://github.com/rknell/jellyamp/releases/latest),
+Get the APK from [GitHub Releases](https://github.com/rknell/rewindamp/releases/latest),
 install it, and sign in to your Jellyfin server. Use HTTPS outside a trusted home network.
 Server base paths are supported. You can explore Demo mode before connecting.
 
-The current published build is **0.3.6** and is debug signed. It uses the same signing key
-as the earlier personal builds, so it can update those installations while retaining sign-in
-and saved app data. Building on another machine normally uses a different debug key, so that
-APK may require uninstalling an existing installation first. Uninstalling removes phone-only
-music downloads and saved app data; server playlists remain on Jellyfin.
+The existing published **0.3.6** release uses the former Jellyamp name and application ID.
+Current Rewindamp source uses the clean `dev.rewindamp` identity and installs separately;
+old app data is not automatically migrated. Builds remain debug signed. Uninstalling either
+app removes its phone-only downloads and saved data; server playlists remain on Jellyfin.
+Build the current source using the instructions below for the renamed app.
 
 To make a quick mix: tap tracks to queue them, open **Queue** to reorder or remove entries,
 and use **Save As** to keep the mix as a private Jellyfin playlist. Clearing the queue is an
@@ -249,6 +249,6 @@ in an issue, screenshot or test fixture.
 
 ## License
 
-Original Jellyamp code is available under the [MIT License](LICENSE).
+Original Rewindamp code is available under the [MIT License](LICENSE).
 Third-party libraries and the Gradle wrapper retain their own licences; see
 [Third-party notices](THIRD_PARTY_NOTICES.md).

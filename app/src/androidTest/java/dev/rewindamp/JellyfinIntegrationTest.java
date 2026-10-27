@@ -1,4 +1,4 @@
-package dev.jellyamp;
+package dev.rewindamp;
 
 import android.content.ComponentName;
 import android.content.Context;
@@ -19,7 +19,7 @@ import static org.junit.Assert.*;
 /** Requires an isolated Jellyfin on host port 18096 with only synthetic test audio. */
 @RunWith(AndroidJUnit4.class)
 public class JellyfinIntegrationTest {
-    JellyfinApi login() throws Exception {return JellyfinApi.login("http://10.0.2.2:18096","jellyamp-test","test-only-local-password");}
+    JellyfinApi login() throws Exception {return JellyfinApi.login("http://10.0.2.2:18096","rewindamp-test","test-only-local-password");}
     @Test public void playlistCrudUsesEntryIdsAndPreservesVisibility() throws Exception {
         JellyfinApi api=login();List<Track> music=api.items("Audio","",null,0);assertEquals(2,music.size());
         String name="Integration "+System.nanoTime();String id=null;

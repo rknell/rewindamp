@@ -1,4 +1,4 @@
-package dev.jellyamp;
+package dev.rewindamp;
 
 import android.content.Context;
 import android.net.Uri;
@@ -52,7 +52,7 @@ final class OfflineLibrary {
         if(!store.read("download-settings").optBoolean("paused"))manager.resumeDownloads();
     }
     DataSource.Factory http(){
-        return ()->new DefaultHttpDataSource.Factory().setUserAgent("Jellyamp/0.2.0").setDefaultRequestProperties(Map.of("Authorization",apiToken)).createDataSource();
+        return ()->new DefaultHttpDataSource.Factory().setUserAgent("Rewindamp/0.2.0").setDefaultRequestProperties(Map.of("Authorization",apiToken)).createDataSource();
     }
     DataSource.Factory playbackSource(){return new CacheDataSource.Factory().setCache(cache).setCacheWriteDataSinkFactory(null)
         .setUpstreamDataSourceFactory(new DefaultDataSource.Factory(context,http())).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);}

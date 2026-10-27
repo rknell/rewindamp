@@ -1,4 +1,4 @@
-package dev.jellyamp;
+package dev.rewindamp;
 
 import androidx.media3.common.Player;
 import androidx.media3.common.MediaItem;

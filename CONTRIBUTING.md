@@ -1,6 +1,6 @@
-# Contributing to Jellyamp
+# Contributing to Rewindamp
 
-Contributions are welcome! Jellyamp was vibe coded with AI assistance and grew out of a
+Contributions are welcome! Rewindamp was vibe coded with AI assistance and grew out of a
 simple idea: make it effortless to build a queue or playlist from a Jellyfin collection,
 especially when you want to put a party mix or a quick vibe together.
 

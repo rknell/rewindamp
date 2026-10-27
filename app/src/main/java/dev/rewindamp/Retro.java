@@ -1,4 +1,4 @@
-package dev.jellyamp;
+package dev.rewindamp;
 
 import android.content.Context;
 import android.graphics.*;

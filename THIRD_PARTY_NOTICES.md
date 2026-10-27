@@ -1,6 +1,6 @@
 # Third-party notices
 
-Jellyamp's original code is MIT licensed. That does not change the licences of its build
+Rewindamp's original code is MIT licensed. That does not change the licences of its build
 tools and dependencies. No original Winamp skin assets or Jellyfin server code are included.
 
 - **Gradle wrapper and generated launch scripts**: Apache License 2.0. Copyright belongs to

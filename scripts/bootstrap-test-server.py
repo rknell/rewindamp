@@ -5,7 +5,7 @@ import time
 import urllib.request
 
 BASE = "http://127.0.0.1:18096"
-HEADERS = {"Content-Type": "application/json", "Authorization": 'MediaBrowser Client="Jellyamp Test", Device="Local", DeviceId="test", Version="1"'}
+HEADERS = {"Content-Type": "application/json", "Authorization": 'MediaBrowser Client="Rewindamp Test", Device="Local", DeviceId="test", Version="1"'}
 
 
 def request(path, body=None):
@@ -30,10 +30,10 @@ if info.get("StartupWizardCompleted"):
     raise RuntimeError("Expected a fresh disposable server; refusing to reuse an existing server")
 request("/Startup/Configuration", {"UICulture": "en-US", "MetadataCountryCode": "AU", "PreferredMetadataLanguage": "en"})
 request("/Startup/User")
-request("/Startup/User", {"Name": "jellyamp-test", "Password": "test-only-local-password"})
+request("/Startup/User", {"Name": "rewindamp-test", "Password": "test-only-local-password"})
 request("/Startup/RemoteAccess", {"EnableRemoteAccess": True, "EnableAutomaticPortMapping": False})
 request("/Startup/Complete", {})
-auth = request("/Users/AuthenticateByName", {"Username": "jellyamp-test", "Pw": "test-only-local-password"})
+auth = request("/Users/AuthenticateByName", {"Username": "rewindamp-test", "Pw": "test-only-local-password"})
 HEADERS["Authorization"] += ', Token="' + auth["AccessToken"] + '"'
 request("/Library/VirtualFolders?name=Test%20Music&collectionType=music&refreshLibrary=true",
         {"LibraryOptions": {"PathInfos": [{"Path": "/music"}], "EnableInternetProviders": False}})

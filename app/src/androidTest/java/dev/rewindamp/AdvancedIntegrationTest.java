@@ -1,4 +1,4 @@
-package dev.jellyamp;
+package dev.rewindamp;
 
 import android.app.Activity;
 import android.content.Context;
@@ -36,7 +36,7 @@ public class AdvancedIntegrationTest {
     void main(Runnable action){instrumentation.runOnMainSync(action);}
     <T> T read(java.util.concurrent.Callable<T> action){AtomicReference<T> result=new AtomicReference<>();main(()->{try{result.set(action.call());}catch(Exception e){throw new RuntimeException(e);}});return result.get();}
     void await(BooleanSupplier condition,int seconds)throws Exception{long end=System.currentTimeMillis()+seconds*1000L;while(System.currentTimeMillis()<end){if(condition.getAsBoolean())return;Thread.sleep(100);}assertTrue("Timed out waiting for the expected state",condition.getAsBoolean());}
-    JellyfinApi login()throws Exception{return JellyfinApi.login("http://10.0.2.2:18096","jellyamp-test","test-only-local-password");}
+    JellyfinApi login()throws Exception{return JellyfinApi.login("http://10.0.2.2:18096","rewindamp-test","test-only-local-password");}
     final class Fixture implements AutoCloseable {
         final JellyfinApi api;
         Activity activity;
@@ -241,7 +241,7 @@ public class AdvancedIntegrationTest {
             main(()->((android.view.View)lastText(content,"Test Signal One").getParent()).performClick());main(()->((android.view.View)lastText(content,"Test Signal Two").getParent()).performClick());
             await(()->read(()->f.controller.getMediaItemCount()==2),5);assertTrue(read(()->input.hasFocus()&&content.getRootWindowInsets().isVisible(android.view.WindowInsets.Type.ime())));
             main(()->input.setText("Two"));await(()->read(()->lastText(content,"Test Signal Two")!=null&&lastText(content,"Test Signal One")==null),10);
-            main(()->input.setText("jElLyAmP tEsT"));await(()->read(()->lastText(content,"Test Signal One")!=null&&lastText(content,"Test Signal Two")!=null),10);
+            main(()->input.setText("rEwInDaMp tEsT"));await(()->read(()->lastText(content,"Test Signal One")!=null&&lastText(content,"Test Signal Two")!=null),10);
             assertEquals("Artist-name search should find tracks whose titles do not include the artist",2,(int)read(()->findList(content).getCount()));
             main(()->lastText(content,"‹ BACK").performClick());await(()->read(()->lastText(content,"‹ BACK")==null),5);assertEquals(2,(int)read(()->f.controller.getMediaItemCount()));
         }

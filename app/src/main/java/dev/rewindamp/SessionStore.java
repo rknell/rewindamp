@@ -1,4 +1,4 @@
-package dev.jellyamp;
+package dev.rewindamp;
 
 import android.content.Context;
 import android.security.keystore.KeyGenParameterSpec;
@@ -15,13 +15,13 @@ import javax.crypto.spec.GCMParameterSpec;
 final class SessionStore {
     private static SecretKey key() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
-        if (!store.containsAlias("jellyamp-session")) {
+        if (!store.containsAlias("rewindamp-session")) {
             KeyGenerator generator = KeyGenerator.getInstance("AES", "AndroidKeyStore");
-            generator.init(new KeyGenParameterSpec.Builder("jellyamp-session", KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+            generator.init(new KeyGenParameterSpec.Builder("rewindamp-session", KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());
             generator.generateKey();
         }
-        return (SecretKey) store.getKey("jellyamp-session", null);
+        return (SecretKey) store.getKey("rewindamp-session", null);
     }
     static void save(Context context, JellyfinApi api) throws Exception {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key());

@@ -1,4 +1,4 @@
-package dev.jellyamp;
+package dev.rewindamp;
 
 import android.os.Bundle;
 import androidx.media3.common.MediaItem;
@@ -36,7 +36,7 @@ final class CarLibrary implements MediaLibrarySession.Callback {
     }
     @Override public int onPlayerCommandRequest(MediaSession session,MediaSession.ControllerInfo controller,int command){commandListener.accept(command);return androidx.media3.session.SessionResult.RESULT_SUCCESS;}
     @Override public ListenableFuture<LibraryResult<MediaItem>> onGetLibraryRoot(MediaLibrarySession session,MediaSession.ControllerInfo controller,LibraryParams params){
-        return Futures.immediateFuture(LibraryResult.ofItem(folder("root","Jellyamp"),params));
+        return Futures.immediateFuture(LibraryResult.ofItem(folder("root","Rewindamp"),params));
     }
     List<MediaItem> children(String id,int page,int pageSize)throws Exception{
         if(api==null||offline==null)return List.of(folder("signin","Sign in on your phone"));
@@ -56,7 +56,7 @@ final class CarLibrary implements MediaLibrarySession.Callback {
         return io.submit(()->{try{return LibraryResult.ofItemList(children(id,page,size),params);}catch(Exception e){return LibraryResult.ofError(androidx.media3.session.SessionError.ERROR_IO);}});
     }
     @Override public ListenableFuture<LibraryResult<MediaItem>> onGetItem(MediaLibrarySession s,MediaSession.ControllerInfo c,String id){
-        return io.submit(()->{try{if(id.equals("root"))return LibraryResult.ofItem(folder("root","Jellyamp"),null);return LibraryResult.ofItem(resolve(id),null);}catch(Exception e){return LibraryResult.ofError(androidx.media3.session.SessionError.ERROR_BAD_VALUE);}});
+        return io.submit(()->{try{if(id.equals("root"))return LibraryResult.ofItem(folder("root","Rewindamp"),null);return LibraryResult.ofItem(resolve(id),null);}catch(Exception e){return LibraryResult.ofError(androidx.media3.session.SessionError.ERROR_BAD_VALUE);}});
     }
     private MediaItem resolve(String id)throws Exception{
         if(offline==null)throw new IllegalStateException();

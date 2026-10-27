@@ -1,9 +1,9 @@
 plugins { id 'com.android.application' }
 android {
-    namespace 'dev.jellyamp'
+    namespace 'dev.rewindamp'
     compileSdk 35
     defaultConfig {
-        applicationId 'dev.jellyamp'
+        applicationId 'dev.rewindamp'
         minSdk 26
         targetSdk 35
         versionCode 10

@@ -1,4 +1,4 @@
-package dev.jellyamp;
+package dev.rewindamp;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -115,8 +115,8 @@ public final class MainActivity extends Activity {
     }
     EditText field(String hint,boolean password){EditText e=new EditText(this);e.setTextColor(Retro.GREEN);e.setHintTextColor(Retro.MUTED);e.setTextSize(13);e.setSingleLine(true);e.setTypeface(Retro.MONO);e.setPadding(dp(9),dp(5),dp(9),dp(5));e.setBackground(Retro.bevel(Retro.LCD,true));e.setHint(hint);e.setInputType(password?InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD:InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);if(password)e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);return e;}
     void loginScreen(){
-        searchScreen=false;previousBrowse=null;previousBrowseRows=null;browseHistory.clear();base();ScrollView scroll=new ScrollView(this);LinearLayout box=column();scroll.addView(box);root.addView(scroll);rail(box,"JELLYAMP / CONNECT");gap(box,24);
-        box.addView(text("JELLYAMP",34,Retro.GREEN));box.addView(text("YOUR MUSIC. OLD SCHOOL.",12,Retro.MUTED));gap(box,24);
+        searchScreen=false;previousBrowse=null;previousBrowseRows=null;browseHistory.clear();base();ScrollView scroll=new ScrollView(this);LinearLayout box=column();scroll.addView(box);root.addView(scroll);rail(box,"REWINDAMP / CONNECT");gap(box,24);
+        box.addView(text("REWINDAMP",34,Retro.GREEN));box.addView(text("YOUR MUSIC. OLD SCHOOL.",12,Retro.MUTED));gap(box,24);
         LinearLayout form=column();panel(form);form.setPadding(dp(16),dp(12),dp(16),dp(12));box.addView(form);rail(form,"JELLYFIN SERVER");gap(form,12);
         EditText server=field("https://jellyfin.example.com",false);server.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);form.addView(server,new LinearLayout.LayoutParams(-1,dp(52)));gap(form,12);
         EditText user=field("Username",false);form.addView(user,new LinearLayout.LayoutParams(-1,dp(52)));gap(form,12);EditText pass=field("Password",true);form.addView(pass,new LinearLayout.LayoutParams(-1,dp(52)));gap(form,14);
@@ -133,11 +133,11 @@ public final class MainActivity extends Activity {
         boolean landscape=getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE;
         LinearLayout deckHost=root,libraryHost=root;
         if(landscape){LinearLayout split=row();split.setGravity(Gravity.TOP);root.addView(split,new LinearLayout.LayoutParams(-1,-1));ScrollView left=new ScrollView(this);deckHost=column();left.addView(deckHost);split.addView(left,new LinearLayout.LayoutParams(0,-1,1));libraryHost=column();LinearLayout.LayoutParams right=new LinearLayout.LayoutParams(0,-1,1);right.leftMargin=dp(6);split.addView(libraryHost,right);}
-        LinearLayout deck=column();panel(deck);deckHost.addView(deck);rail(deck,"JELLYAMP");
+        LinearLayout deck=column();panel(deck);deckHost.addView(deck);rail(deck,"REWINDAMP");
         LinearLayout lcd=row();lcd.setPadding(dp(6),dp(4),dp(6),dp(4));lcd.setBackground(Retro.bevel(Retro.LCD,true));deck.addView(lcd,new LinearLayout.LayoutParams(-1,dp(86)));
         LinearLayout meters=column();clock=new Retro.Digits(this);clock.setFocusable(true);clock.setOnClickListener(v->{remainingTime=!remainingTime;getPreferences(0).edit().putBoolean("remainingTime",remainingTime).apply();updateClock();});meters.addView(clock,new LinearLayout.LayoutParams(-1,dp(42)));spectrum=new Retro.Spectrum(this);meters.addView(spectrum,new LinearLayout.LayoutParams(-1,dp(29)));lcd.addView(meters,new LinearLayout.LayoutParams(dp(122),-1));
         LinearLayout info=column();info.setPadding(dp(8),0,0,0);lcd.addView(info,new LinearLayout.LayoutParams(0,-1,1));title=text("READY WHEN YOU ARE",12,Retro.GREEN);title.setSingleLine(true);title.setEllipsize(TextUtils.TruncateAt.MARQUEE);title.setMarqueeRepeatLimit(-1);title.setSelected(true);info.addView(title,new LinearLayout.LayoutParams(-1,dp(24)));
-        LinearLayout details=row();cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.setImageResource(R.drawable.ic_jellyamp);cover.setContentDescription("Current album cover");details.addView(cover,new LinearLayout.LayoutParams(dp(42),dp(42)));
+        LinearLayout details=row();cover=new ImageView(this);cover.setScaleType(ImageView.ScaleType.CENTER_CROP);cover.setImageResource(R.drawable.ic_rewindamp);cover.setContentDescription("Current album cover");details.addView(cover,new LinearLayout.LayoutParams(dp(42),dp(42)));
         LinearLayout labels=column();labels.setPadding(dp(7),0,0,0);artist=text("JELLYFIN MUSIC",10,Retro.MUTED);artist.setSingleLine(true);artist.setEllipsize(TextUtils.TruncateAt.END);labels.addView(artist);audioInfo=text("STEREO",9,Retro.GREEN);labels.addView(audioInfo);details.addView(labels,new LinearLayout.LayoutParams(0,-2,1));info.addView(details);
         LinearLayout switches=row();volume=new SeekBar(this);volume.setMax(100);volume.setProgress(100);volume.setContentDescription("Playback volume");volume.setThumb(Retro.thumb(this));volume.setProgressTintList(ColorStateList.valueOf(0xFFC88737));switches.addView(volume,new LinearLayout.LayoutParams(0,dp(30),1));
         volume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar s,int progress,boolean user){if(user&&player!=null)player.setVolume(progress/100f);}public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}});
@@ -150,8 +150,8 @@ public final class MainActivity extends Activity {
         weighted(controls,transport("stop",()->{if(player!=null){player.pause();player.seekTo(0);}}),44);next=transport("next",()->{if(player!=null&&player.hasNextMediaItem())player.seekToNextMediaItem();});weighted(controls,next,44);
         weighted(controls,transport("eject",this::chooseSection),44);shuffle=button("SHUF",()->{if(player!=null)player.setShuffleModeEnabled(!player.getShuffleModeEnabled());});controls.addView(shuffle,new LinearLayout.LayoutParams(dp(49),dp(44)));
         repeat=button("REP",()->{if(player!=null)player.setRepeatMode((player.getRepeatMode()+1)%3);});controls.addView(repeat,new LinearLayout.LayoutParams(dp(42),dp(44)));deck.addView(controls);gap(deckHost,5);
-        equalizer=column();panel(equalizer);deckHost.addView(equalizer);rail(equalizer,"JELLYAMP EQUALIZER");buildEqualizer();equalizer.setVisibility(eqExpanded?View.VISIBLE:View.GONE);gap(deckHost,5);
-        LinearLayout browser=column();panel(browser);libraryHost.addView(browser,new LinearLayout.LayoutParams(-1,0,1));rail(browser,"JELLYAMP PLAYLIST");
+        equalizer=column();panel(equalizer);deckHost.addView(equalizer);rail(equalizer,"REWINDAMP EQUALIZER");buildEqualizer();equalizer.setVisibility(eqExpanded?View.VISIBLE:View.GONE);gap(deckHost,5);
+        LinearLayout browser=column();panel(browser);libraryHost.addView(browser,new LinearLayout.LayoutParams(-1,0,1));rail(browser,"REWINDAMP PLAYLIST");
         LinearLayout navigation=row();sectionButton=button(section.toUpperCase(Locale.ROOT)+" ▾",this::chooseSection);navigation.addView(sectionButton,new LinearLayout.LayoutParams(0,dp(42),1));
         queueButton=button("QUEUE",()->navigate("Queue"));navigation.addView(queueButton,new LinearLayout.LayoutParams(dp(96),dp(42)));navigation.addView(button("SEL",()->{selecting=!selecting;selected.clear();render(morePages);}),new LinearLayout.LayoutParams(dp(44),dp(42)));browser.addView(navigation);
         LinearLayout find=row();search=field("Search music",false);search.setText(query);find.addView(search,new LinearLayout.LayoutParams(0,dp(40),1));find.addView(button("GO",this::searchNow),new LinearLayout.LayoutParams(dp(44),dp(40)));search.setFocusable(false);search.setCursorVisible(false);search.setOnClickListener(v->openSearch(""));browser.addView(find);
@@ -201,7 +201,7 @@ public final class MainActivity extends Activity {
         mainScreen();if(previous!=null)restorePage(new BrowsePage(previous,rows,previousBrowseMore));else load(false);
     }
     void searchLayout(boolean keyboard){
-        base();rail(root,"JELLYAMP SEARCH");LinearLayout navigation=row();weighted(navigation,button("‹ BACK",this::closeSearch),44);queueButton=button("QUEUE",()->navigate("Queue"));weighted(navigation,queueButton,44);root.addView(navigation);
+        base();rail(root,"REWINDAMP SEARCH");LinearLayout navigation=row();weighted(navigation,button("‹ BACK",this::closeSearch),44);queueButton=button("QUEUE",()->navigate("Queue"));weighted(navigation,queueButton,44);root.addView(navigation);
         LinearLayout find=row();search=field("Track title or artist",false);search.setText(query);find.addView(search,new LinearLayout.LayoutParams(0,dp(48),1));find.addView(button("DONE",this::hideKeyboard),new LinearLayout.LayoutParams(dp(54),dp(48)));root.addView(find);
         search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);search.setOnEditorActionListener((v,a,event)->{searchNow();hideKeyboard();return true;});
         count=text("TYPE TO SEARCH · TAP RESULTS TO QUEUE",11,Retro.MUTED);root.addView(count,new LinearLayout.LayoutParams(-1,dp(32)));tools=row();root.addView(tools,new LinearLayout.LayoutParams(-1,dp(40)));sectionButton=null;
@@ -219,7 +219,7 @@ public final class MainActivity extends Activity {
                 MediaItem current=player.getCurrentMediaItem();if(current!=null&&offline!=null&&offline.complete(current.mediaId)&&current.mediaMetadata.extras!=null&&!current.mediaMetadata.extras.getBoolean("offline"))say("Switching to downloaded copy…");else say("Playback failed. Try a downloaded track or check the connection.");
             }
         });if(!pendingQueue.isEmpty()){List<Track> pending=new ArrayList<>(pendingQueue);pendingQueue.clear();enqueue(pending);}updatePlayer();if(section.equals("Queue"))load(false);
-        }catch(Exception ignored){say("Could not connect to the audio service. Reopen Jellyamp.");}},command->handler.post(command));
+        }catch(Exception ignored){say("Could not connect to the audio service. Reopen Rewindamp.");}},command->handler.post(command));
     }
     void resume(){if(demo){say("Demo preview — connect to play your music");return;}if(player==null)return;if(player.getMediaItemCount()==0){say("Tap a track to start building your queue");return;}if(player.getPlaybackState()==Player.STATE_ENDED)player.seekTo(0);if(player.getPlaybackState()==Player.STATE_IDLE)player.prepare();player.play();}
     void updateClock(){
@@ -343,7 +343,7 @@ public final class MainActivity extends Activity {
             Button action=button("+",()->trackMenu(track,index));item.addView(action,new LinearLayout.LayoutParams(dp(42),dp(48)));
             if(queue()||playlist()){
                 TextView drag=text("≡",18,Retro.MUTED);drag.setGravity(Gravity.CENTER);drag.setContentDescription("Drag to reorder "+track.name);item.addView(drag,new LinearLayout.LayoutParams(dp(30),dp(48)));
-                drag.setOnLongClickListener(v->{v.startDragAndDrop(ClipData.newPlainText("jellyamp-row",String.valueOf(index)),new View.DragShadowBuilder(item),new DragToken(generation,index),0);return true;});
+                drag.setOnLongClickListener(v->{v.startDragAndDrop(ClipData.newPlainText("rewindamp-row",String.valueOf(index)),new View.DragShadowBuilder(item),new DragToken(generation,index),0);return true;});
                 item.setOnDragListener((v,event)->{if(!(event.getLocalState() instanceof DragToken token)||token.generation!=generation)return false;if(event.getAction()==DragEvent.ACTION_DROP){move(token.index,index);return true;}return true;});
             }
         }else item.addView(button("›",()->open(track)),new LinearLayout.LayoutParams(dp(42),dp(48)));
@@ -411,15 +411,15 @@ public final class MainActivity extends Activity {
         dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String name=input.getText().toString().trim();if(name.isBlank()){input.setError("Enter a name");return;}dialog.dismiss();action.accept(name);}));dialog.show();
     }
     void settings(){
-        String[] choices=demo?new String[]{"Connect to Jellyfin","About Jellyamp"}:new String[]{"Playback transitions","Downloads","Pause downloads","Resume downloads","Sync favourites and play history","Sign out","About Jellyamp"};
-        new AlertDialog.Builder(this).setTitle("Jellyamp 0.3.6").setItems(choices,(d,i)->{
+        String[] choices=demo?new String[]{"Connect to Jellyfin","About Rewindamp"}:new String[]{"Playback transitions","Downloads","Pause downloads","Resume downloads","Sync favourites and play history","Sign out","About Rewindamp"};
+        new AlertDialog.Builder(this).setTitle("Rewindamp 0.3.6").setItems(choices,(d,i)->{
             if(demo){if(i==0){demo=false;loginScreen();}else about();return;}
             switch(i){case 0->TransitionSettings.show(this);case 1->navigate("Offline");case 2->{offline.paused(true);say("Downloads paused");}case 3->{offline.paused(false);say("Downloads resumed");}
                 case 4->{say("Syncing…");io.execute(()->{new PlaybackReporter(api,store).sync();handler.post(()->say("Sync attempted · pending changes retry automatically"));});}
                 case 5->new AlertDialog.Builder(this).setTitle("Sign out?").setMessage("Playback and downloads stop. Saved queues and downloads stay private to this account on the phone.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(dd,w)->signOut()).show();default->about();}
         }).setNegativeButton("Close",null).show();
     }
-    void about(){new AlertDialog.Builder(this).setTitle("Jellyamp 0.3.6").setMessage("Classic controls. Your Jellyfin music.\n\nTap tracks to append. Clear only in Queue.\nHold ≡ to drag playlist or queue entries. Long-press a track to select several.\n\n10-band EQ with automatic headroom. The spectrum follows decoded audio; no microphone permission.\n\nAndroid Auto requires sign-in on your phone. For a sideloaded build, enable unknown sources in Android Auto developer settings.\n\nIndependent app; not affiliated with Winamp or Jellyfin.").setPositiveButton("Close",null).show();}
+    void about(){new AlertDialog.Builder(this).setTitle("Rewindamp 0.3.6").setMessage("Classic controls. Your Jellyfin music.\n\nTap tracks to append. Clear only in Queue.\nHold ≡ to drag playlist or queue entries. Long-press a track to select several.\n\n10-band EQ with automatic headroom. The spectrum follows decoded audio; no microphone permission.\n\nAndroid Auto requires sign-in on your phone. For a sideloaded build, enable unknown sources in Android Auto developer settings.\n\nIndependent app; not affiliated with Winamp or Jellyfin.").setPositiveButton("Close",null).show();}
     void signOut(){
         generation++;busy=false;JellyfinApi previous=api;if(player!=null)player.pause();if(controllerFuture!=null){MediaController.releaseFuture(controllerFuture);controllerFuture=null;}player=null;
         stopService(new Intent(this,PlaybackService.class));OfflineLibrary.pause(this);new androidx.media3.exoplayer.scheduler.PlatformScheduler(this,42).cancel();SessionStore.clear(this);browseHistory.clear();previousBrowseRows=null;previousBrowse=null;api=null;offline=null;store=null;undo=null;pendingQueue.clear();shown.clear();parent=null;section="Tracks";query="";loginScreen();

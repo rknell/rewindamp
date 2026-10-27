@@ -1,4 +1,4 @@
-package dev.jellyamp;
+package dev.rewindamp;
 
 import androidx.media3.common.C;
 import androidx.media3.common.audio.BaseAudioProcessor;

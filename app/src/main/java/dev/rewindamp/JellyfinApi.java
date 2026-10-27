@@ -1,4 +1,4 @@
-package dev.jellyamp;
+package dev.rewindamp;
 
 import android.net.Uri;
 import org.json.JSONArray;
@@ -32,7 +32,7 @@ final class JellyfinApi {
         return new JellyfinApi(anonymous.server, result.getString("AccessToken"), result.getJSONObject("User").getString("Id"), anonymous.deviceId);
     }
     String authorization() {
-        return "MediaBrowser Client=\"Jellyamp\", Device=\"Android\", DeviceId=\"" + deviceId + "\", Version=\"0.3.6\"" + (token.isEmpty() ? "" : ", Token=\"" + token + "\"");
+        return "MediaBrowser Client=\"Rewindamp\", Device=\"Android\", DeviceId=\"" + deviceId + "\", Version=\"0.3.6\"" + (token.isEmpty() ? "" : ", Token=\"" + token + "\"");
     }
     JSONObject request(String method, String path, JSONObject body) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(server + path).openConnection();
