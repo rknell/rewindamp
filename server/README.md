@@ -67,13 +67,15 @@ Once a password is set, the old owner token stops granting API access. Sign in w
 password on the website and install Android 0.4.2 or later for password sign-in. Existing
 subscriptions, listening history and phone storage remain in place. Passwords are salted
 and hashed using scrypt; neither plaintext passwords nor raw session tokens are stored in
-the server database. Sessions expire after 30 days, and sign-in attempts are rate-limited.
+the server database. Sessions remain valid until sign-out or a password change; sign-in attempts are rate-limited.
 
 Use **PASSWORD** in the web library to change your password. It requires the current password
 and signs out other sessions. **SIGN OUT** revokes that browser session. The local password
 command also revokes existing sessions. Use HTTPS outside a trusted test network. Browser
-sessions stay in tab memory; Android stores only the session token encrypted by Keystore,
-never your password. Authentication is always in headers, never media URLs or APK assets.
+sessions use a persistent HttpOnly, SameSite cookie (Secure over HTTPS), renewed whenever
+the library is reopened. Android stores only the session token encrypted by Keystore, never
+your password. Browser closes and server restarts preserve sign-in. Clearing browser data
+removes its remembered session. Authentication uses headers/cookies, never media URLs or APK assets.
 
 In Android, select **Podcasts** in the library menu or connect from the login screen without
 a Jellyfin account. Music and podcast queues, credentials, phone downloads and history are
@@ -217,13 +219,14 @@ nearest-neighbour exports of that master to retain the pixel-art edges.
 
 ## API and verification
 
-A bearer session token is required for library/media API routes; auth status and password login are public. There are no tokens in media URLs,
+A bearer session token or remembered browser cookie is required for library/media API routes; auth status and password login are public. There are no tokens in media URLs,
 cross-origin API access or public file listings.
 
 - `GET /health`, `GET /api/auth/status` (public setup status), `GET /api/feeds`.
-- `POST /api/auth/login`: password → 30-day session access token.
+- `POST /api/auth/login`: password → revocable session access token and persistent browser cookie.
 - `POST /api/auth/password`: authenticated initial setup or password change (`new_password`,
   plus `current_password` after setup); revokes other sessions.
+- `GET /api/auth/session`: restore a remembered browser session and renew its cookie.
 - `POST /api/auth/logout`: revokes the current session.
 - `GET /api/podcasts/search?term=…`: authenticated Apple Podcasts discovery (AU, ten results).
 - `POST /api/feeds`: `url`, `title`, `mode`, `years`, optional Unix-seconds `since`;

@@ -1,6 +1,7 @@
 import contextlib
 import datetime as dt
 import email.utils
+import hashlib
 import http.client
 import io
 import json
@@ -204,12 +205,24 @@ class PasswordTests(unittest.TestCase):
         row=self.archive.rows('SELECT * FROM auth_settings')[0]
         self.assertNotEqual(row['password_hash'],password);self.assertEqual(len(row['salt']),64)
         self.assertNotEqual(self.archive.rows('SELECT token_hash FROM auth_sessions')[0]['token_hash'],token)
-    def test_login_expiry_logout_and_rotation(self):
+    def test_remembered_login_logout_and_rotation(self):
         first=self.archive.set_password('first memorable password')
         second=self.archive.login('first memorable password');self.assertTrue(self.archive.authenticated(second))
         self.archive.logout(first);self.assertFalse(self.archive.authenticated(first));self.assertTrue(self.archive.authenticated(second))
         third=self.archive.set_password('second memorable password');self.assertFalse(self.archive.authenticated(second));self.assertTrue(self.archive.authenticated(third))
-        self.now+=31*86400;self.assertFalse(self.archive.authenticated(third))
+        self.now+=400*86400;self.assertTrue(self.archive.authenticated(third))
+    def test_upgrade_preserves_valid_sessions_without_restoring_expired_ones(self):
+        valid=self.archive.set_password('upgrade test password')
+        expired=self.archive.session()
+        with self.archive.db:
+            self.archive.db.execute('UPDATE auth_sessions SET expires=? WHERE token_hash=?',(self.now+86400,hashlib.sha256(valid.encode()).hexdigest()))
+            self.archive.db.execute('UPDATE auth_sessions SET expires=? WHERE token_hash=?',(self.now-1,hashlib.sha256(expired.encode()).hexdigest()))
+        reopened=Archive(self.archive.config,self.archive.media,clock=lambda:self.now)
+        try:
+            self.now+=400*86400
+            self.assertTrue(reopened.authenticated(valid));self.assertFalse(reopened.authenticated(expired))
+        finally:reopened.close()
+
     def test_invalid_passwords_and_login_rate_limit(self):
         for password in ('short','x'*257,None):
             with self.assertRaises(ValueError):self.archive.set_password(password)
@@ -219,6 +232,7 @@ class PasswordTests(unittest.TestCase):
         self.now+=61;self.assertIsNotNone(self.archive.login('memorable test password'))
     def test_password_and_session_survive_server_restart(self):
         token=self.archive.set_password('restart test passphrase')
+        self.now+=400*86400
         reopened=Archive(self.archive.config,self.archive.media,clock=lambda:self.now)
         try:self.assertTrue(reopened.authenticated(token));self.assertTrue(reopened.check_password('restart test passphrase'))
         finally:reopened.close()
@@ -302,6 +316,30 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(status,200);fresh={'Authorization':'Bearer '+json.loads(raw)['access_token']}
         self.assertEqual(self.request('/api/feeds',other)[0],401);self.assertEqual(self.request('/api/feeds',session)[0],401)
         self.assertEqual(post('/api/auth/logout',{},fresh)[0],200);self.assertEqual(self.request('/api/feeds',fresh)[0],401)
+    def test_browser_remembered_cookie_restore_logout_and_password_rotation(self):
+        self.archive.set_password('memorable browser password')
+        def post(path,body,headers=None):return self.request(path,headers,'POST',json.dumps(body))
+        status,headers,_=post('/api/auth/login',{'password':'memorable browser password'},{'X-Forwarded-Proto':'https'})
+        self.assertEqual(status,200)
+        cookie=headers['Set-Cookie']
+        for flag in ('HttpOnly','SameSite=Strict','Secure','Max-Age=34560000','Path=/'):self.assertIn(flag,cookie)
+        auth={'Cookie':cookie.split(';')[0]}
+        self.assertEqual(self.request('/api/feeds',auth)[0],200)
+        self.assertEqual(self.request('/api/auth/session')[0],401)
+        status,headers,raw=self.request('/api/auth/session',auth)
+        self.assertEqual(status,200);self.assertTrue(json.loads(raw)['signed_in'])
+        self.assertIn('Max-Age=34560000',headers['Set-Cookie'])
+        self.assertEqual(self.request('/api/feeds',{**auth,'Authorization':'Bearer invalid'})[0],401)
+        self.assertEqual(post('/api/auth/logout',{}, {**auth,'Origin':'https://evil.example'})[0],403)
+        self.assertEqual(self.request('/api/feeds',auth)[0],200)
+        status,headers,_=post('/api/auth/logout',{},auth)
+        self.assertEqual(status,200);self.assertIn('Max-Age=0',headers['Set-Cookie'])
+        self.assertEqual(self.request('/api/auth/session',auth)[0],401)
+        _,headers,_=post('/api/auth/login',{'password':'memorable browser password'})
+        auth={'Cookie':headers['Set-Cookie'].split(';')[0]}
+        self.archive.set_password('changed browser password')
+        self.assertEqual(self.request('/api/auth/session',auth)[0],401)
+
     def test_cross_origin_password_login_and_setup_are_blocked(self):
         for path,body in [('/api/auth/login',{'password':'irrelevant'}),('/api/auth/password',{'new_password':'memorable test password'})]:
             headers={'Authorization':'Bearer '+self.archive.token,'Origin':'https://untrusted.example'}

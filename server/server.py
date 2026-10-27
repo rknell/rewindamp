@@ -26,6 +26,7 @@ import tarfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.cookies import SimpleCookie, CookieError
 from urllib.parse import urlsplit, urljoin, parse_qs, urlencode
 import xml.etree.ElementTree as ET
 
@@ -176,6 +177,10 @@ class Archive:
         if 'requested' not in {r[1] for r in self.db.execute('PRAGMA table_info(episodes)')}:
             self.db.execute('ALTER TABLE episodes ADD COLUMN requested INTEGER NOT NULL DEFAULT 0')
             self.db.commit()
+        # Convert still-valid legacy sessions to explicitly revocable remembered sessions.
+        with self.db:
+            self.db.execute('DELETE FROM auth_sessions WHERE expires!=0 AND expires<=?',(self.clock(),))
+            self.db.execute('UPDATE auth_sessions SET expires=0 WHERE expires!=0')
         self.db.execute('PRAGMA foreign_keys=ON')
         self.max_bytes = int(os.getenv('REWINDAMP_MAX_ARCHIVE_BYTES', str(50*1024**3)))
         self.max_episode_bytes = int(os.getenv('REWINDAMP_MAX_EPISODE_BYTES', str(1024**3)))
@@ -208,13 +213,12 @@ class Archive:
     def authenticated(self, token):
         if not isinstance(token,str) or not token or len(token)>256: return False
         if not self.password_set(): return hmac.compare_digest(token.encode(),self.token.encode())
-        return bool(self.rows('SELECT token_hash FROM auth_sessions WHERE token_hash=? AND expires>?',(hashlib.sha256(token.encode()).hexdigest(),self.clock())))
+        return bool(self.rows('SELECT token_hash FROM auth_sessions WHERE token_hash=?',(hashlib.sha256(token.encode()).hexdigest(),)))
 
     def session(self):
         token = secrets.token_urlsafe(36)
         with self.lock,self.db:
-            self.db.execute('DELETE FROM auth_sessions WHERE expires<=?',(self.clock(),))
-            self.db.execute('INSERT INTO auth_sessions VALUES(?,?)',(hashlib.sha256(token.encode()).hexdigest(),self.clock()+30*86400))
+            self.db.execute('INSERT INTO auth_sessions VALUES(?,?)',(hashlib.sha256(token.encode()).hexdigest(),0))
         return token
 
     def verify_password(self,password):
@@ -487,15 +491,27 @@ class Handler(BaseHTTPRequestHandler):
         pass
     @property
     def archive(self): return self.server.archive
-    def reply(self, code, body):
+    def reply(self, code, body, session=None):
         data = json.dumps(body,allow_nan=False).encode()
         self.send_response(code); self.send_header('Content-Type','application/json')
         self.send_header('Cache-Control','no-store'); self.send_header('Content-Length',str(len(data)))
-        self.send_header('X-Content-Type-Options','nosniff'); self.end_headers()
+        self.send_header('X-Content-Type-Options','nosniff')
+        if session is not None: self.send_header('Set-Cookie',self.session_cookie(session))
+        self.end_headers()
         if self.command != 'HEAD': self.wfile.write(data)
+    def request_token(self):
+        header=self.headers.get('Authorization')
+        if header is not None: return header[7:] if header.startswith('Bearer ') else ''
+        try:
+            cookies=SimpleCookie(self.headers.get('Cookie',''))
+            return cookies['rewindamp_session'].value if 'rewindamp_session' in cookies else ''
+        except CookieError: return ''
+    def session_cookie(self,token):
+        # Renew the browser's persistent cookie when it restores its session.
+        secure='; Secure' if self.headers.get('X-Forwarded-Proto','').lower()=='https' else ''
+        return 'rewindamp_session='+token+'; Path=/; HttpOnly; SameSite=Strict; Max-Age='+('34560000' if token else '0')+secure
     def authorized(self):
-        header=self.headers.get('Authorization','')
-        return header.startswith('Bearer ') and self.archive.authenticated(header[7:])
+        return self.archive.authenticated(self.request_token())
     def do_HEAD(self): self.do_GET()
     def do_GET(self):
         try:
@@ -512,6 +528,8 @@ class Handler(BaseHTTPRequestHandler):
                 if self.command != 'HEAD': self.wfile.write(data)
                 return
             if not self.authorized(): return self.reply(401,{'error':'Sign in required'})
+            if path == '/api/auth/session':
+                return self.reply(200,{'signed_in':True},session=self.request_token())
             query = parse_qs(urlsplit(self.path).query)
             if path == '/api/podcasts/search':
                 try: return self.reply(200,{'items':self.archive.search_podcasts(query.get('term',[''])[0]),'country':'AU','provider':'Apple Podcasts'})
@@ -542,7 +560,7 @@ class Handler(BaseHTTPRequestHandler):
                 try: token=self.archive.login(body.get('password'))
                 except CatalogueRateLimited: return self.reply(429,{'error':'Too many sign-in attempts. Try again in a minute.'})
                 if token is None: return self.reply(401,{'error':'Incorrect password'})
-                return self.reply(200,{'access_token':token})
+                return self.reply(200,{'access_token':token},session=token)
             if not self.authorized(): return self.reply(401,{'error':'Sign in required'})
             if path == '/api/auth/password':
                 with self.archive.auth_lock:
@@ -552,10 +570,10 @@ class Handler(BaseHTTPRequestHandler):
                         if not valid: return self.reply(401,{'error':'Current password is incorrect'})
                     try: token=self.archive.set_password(body.get('new_password'))
                     except ValueError: return self.reply(400,{'error':'Choose a password with 10–256 characters'})
-                return self.reply(200,{'access_token':token})
+                return self.reply(200,{'access_token':token},session=token)
             if path == '/api/auth/logout':
-                self.archive.logout(self.headers.get('Authorization','')[7:])
-                return self.reply(200,{'signed_out':True})
+                self.archive.logout(self.request_token())
+                return self.reply(200,{'signed_out':True},session='')
             if path == '/api/feeds':
                 feed_id = self.archive.subscribe(body.get('title','Podcast'),body['url'],body.get('mode','future'),body.get('years',0),body.get('since'),body.get('only_if_new') is True)
                 return self.reply(201,{'id':feed_id})
