@@ -1,0 +1,23 @@
+services:
+  rewindamp-server:
+    build:
+      context: .
+      args:
+        APP_UID: ${PUID:-1000}
+        APP_GID: ${PGID:-1000}
+    init: true
+    environment:
+      REWINDAMP_MAX_ARCHIVE_BYTES: ${REWINDAMP_MAX_ARCHIVE_BYTES:-53687091200}
+    volumes:
+      - ${REWINDAMP_CONFIG_DIR:?Set an absolute private configuration directory}:/config
+      - ${REWINDAMP_MEDIA_DIR:?Set an absolute podcast archive directory}:/podcasts
+    ports:
+      - "${REWINDAMP_BIND_ADDRESS:-127.0.0.1}:${REWINDAMP_PORT:-13510}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped

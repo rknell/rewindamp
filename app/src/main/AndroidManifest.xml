@@ -7,13 +7,25 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <application android:theme="@style/AppTheme" android:label="Rewindamp" android:icon="@drawable/ic_rewindamp" android:allowBackup="false" android:usesCleartextTraffic="true" android:supportsRtl="true">
+    <application android:theme="@style/AppTheme" android:label="Rewindamp" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:allowBackup="false" android:usesCleartextTraffic="true" android:supportsRtl="true">
         <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
         <meta-data android:name="androidx.car.app.TintableAttributionIcon" android:resource="@drawable/ic_rewindamp" />
         <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
             <intent-filter><action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
         </activity>
+        <activity android:name=".PodcastDiscoveryActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".PodcastActivity" android:exported="false" />
+        <service android:name=".PodcastPlaybackService" android:label="Rewindamp Podcasts" android:exported="true" android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+        <service android:name=".PodcastDownloadService" android:exported="false" android:foregroundServiceType="dataSync">
+            <intent-filter><action android:name="androidx.media3.exoplayer.downloadService.action.RESTART" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
+        </service>
         <service android:name=".PlaybackService" android:exported="true" android:foregroundServiceType="mediaPlayback">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaLibraryService" />

@@ -26,6 +26,59 @@ phones and Android Auto, and thoughtful UI polish all help. See [Contributing](C
 Independent app; unaffiliated with Winamp or Jellyfin. The interface is drawn natively;
 no original Winamp skin images are bundled. Demo mode uses fictional titles.
 
+## Podcasts and Rewindamp Server
+
+Rewindamp now includes a separate **Podcasts** deck using the same classic metal buttons,
+green LCD and title rails. Choose Podcasts in the library menu, or connect from the login
+screen without a Jellyfin account. The independent Docker server downloads RSS episodes,
+archives them and synchronizes per-episode listening history. See
+[Rewindamp Server](server/README.md) for deployment, authentication, the four
+initial subscription passes, backup/restore and current limitations.
+
+Use **+ FIND PODCASTS** to search Apple Podcasts' Australian catalogue by title or publisher.
+Choose a show, select a subscription pass, then confirm. New subscriptions default to future
+episodes only; already subscribed feeds are labelled. Manual RSS entry is also available in
+podcast settings. Connect using your owner password after setting it on the server website.
+Android stores an encrypted session token rather than the password. Searches use the Rewindamp server; no Apple account or API key is needed.
+
+Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
+played/dismissed/reset actions and app-private phone downloads are separate from music.
+The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.5**.
+Music and podcast decks share a bottom Music / Podcasts bar, including their connection
+and search screens. Switching tabs leaves playback alone; starting the other kind of audio
+uses Android audio focus to pause the first player.
+
+The podcast header has a Settings cog. The single transport row is Previous episode,
+15 seconds back, Play/Pause, 30 seconds forward, Next episode, and speed. Long episode titles
+scroll without being reset on every clock tick. A remaining-time label and tappable Up Next
+strip show where you are and what follows. The pencil beside a selected show edits its
+automatic download rule; it is hidden for All Shows. Empty lists offer **View all podcasts**
+to browse older episodes outside the download pass.
+
+Choose **Oldest first** or **Newest first** for each show (and separately for All Shows).
+Played and dismissed episodes are hidden and skipped by default; enable **Show played and
+dismissed episodes** in Settings to include them. Starting an episode snapshots all playable
+server/phone-saved episodes in that view into a queue, across catalogue pages. Next follows
+that queue's order and selected show; All Shows interleaves shows by publication date.
+Unavailable audio is excluded until downloaded. Browsing a different show does not replace
+a playing queue; starting another episode creates a new queue from that view. Automatic
+completion marks the finished episode played. Queue, position and speed restore paused
+after a service restart. The episode menu retains played/reset, dismiss and phone-copy actions.
+
+The moon in the podcast header opens a sleep timer: 15, 30, 60, 90 or 120 minutes, or pause at the
+end of the current episode. It runs in the playback service while the screen is off. A timed
+pause clears itself; changing episodes cancels an end-of-episode timer.
+
+Settings → **Offline downloads** shows saved/pending/failed counts, phone storage and free
+space. View phone copies, retry failed copies through their episode menu, pause/resume
+transfers, download the next three unplayed server-saved episodes in the selected view, or
+remove completed phone copies with confirmation. Wi-Fi-only downloads are the default and
+can be changed. Optional automatic downloads keep the next 1, 3 or 5 queued episodes on the
+phone; this starts off and does not expand the server’s subscription pass. Removing all
+completed phone copies also switches automatic downloading off. Server archives and history
+are kept; phone files remain private to this app and server.
+
 ## Install
 
 Get the APK from [GitHub Releases](https://github.com/rknell/rewindamp/releases/latest),
@@ -214,6 +267,7 @@ With an Android emulator running, Docker, ffmpeg and Python 3 available:
 ./scripts/integration-test.sh
 ```
 
+The script also starts a synthetic podcast fixture on loopback port 18097.
 The script creates an isolated Jellyfin 10.11 on loopback port 18096 with two generated tones
 and a synthetic album cover, and removes only its own test container on exit. It leaves its
 printed temporary test directory for inspection. No production mounts, credentials or media
