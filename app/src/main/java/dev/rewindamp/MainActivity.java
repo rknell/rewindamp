@@ -32,7 +32,7 @@ import java.util.function.Consumer;
 
 @androidx.annotation.OptIn(markerClass=androidx.media3.common.util.UnstableApi.class)
 public final class MainActivity extends Activity {
-    private static final String[] SECTIONS={"Tracks","Albums","Artists","Playlists","Favourites","Offline","History"};
+    private static final String[] SECTIONS={"Tracks","Albums","Artists","Playlists","Favourites","Offline","History","Podcasts"};
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService io=Executors.newSingleThreadExecutor(),searchIo=Executors.newFixedThreadPool(2);
     private final ArtworkLoader artwork=new ArtworkLoader();
@@ -125,6 +125,7 @@ public final class MainActivity extends Activity {
             connect.setEnabled(false);error.setText("Connecting…");io.execute(()->{try{JellyfinApi signed=JellyfinApi.login(address,username,password);SessionStore.save(this,signed);handler.post(()->{if(destroyed)return;pass.setText("");api=signed;offline=OfflineLibrary.get(this,api);store=offline.store;demo=false;mainScreen();connectPlayer();load(false);});}catch(Exception ex){handler.post(()->{if(destroyed)return;connect.setEnabled(true);error.setText(message(ex));});}});
         });
         form.addView(connect,new LinearLayout.LayoutParams(-1,dp(48)));gap(form,10);form.addView(error);gap(box,18);
+        box.addView(button("PODCASTS · CONNECT PODCAST SERVER",()->startActivity(new Intent(this,PodcastActivity.class))),new LinearLayout.LayoutParams(-1,dp(48)));gap(box,12);
         box.addView(button("EXPLORE THE DEMO",()->{demo=true;mainScreen();load(false);}),new LinearLayout.LayoutParams(-1,dp(48)));gap(box,18);
         box.addView(text("Use your own Jellyfin account.\nUse HTTPS outside your trusted home network.\n\nA little 1997, wherever you go.",12,Retro.MUTED));
     }
@@ -168,7 +169,7 @@ public final class MainActivity extends Activity {
         weighted(bands,new Retro.BandSlider(this,"PRE",settings.preamp(),value->{DspSettings.Values s=DspSettings.get();DspSettings.set(this,s.enabled(),value,s.gains());}),94);
         for(int i=0;i<10;i++){int band=i;weighted(bands,new Retro.BandSlider(this,DspSettings.LABELS[i],settings.gains()[i],value->{DspSettings.Values s=DspSettings.get();float[] gains=s.gains().clone();gains[band]=value;DspSettings.set(this,s.enabled(),s.preamp(),gains);}),94);}
     }
-    void chooseSection(){new AlertDialog.Builder(this).setTitle("Music library").setItems(SECTIONS,(d,i)->navigate(SECTIONS[i])).setNegativeButton("Cancel",null).show();}
+    void chooseSection(){new AlertDialog.Builder(this).setTitle("Music library").setItems(SECTIONS,(d,i)->{if(SECTIONS[i].equals("Podcasts"))startActivity(new Intent(this,PodcastActivity.class));else navigate(SECTIONS[i]);}).setNegativeButton("Cancel",null).show();}
     BrowseState captureBrowse(){
         int scroll=restoreScroll>=0?restoreScroll:resultScroll==null?0:resultScroll.getFirstVisiblePosition();
         int top=restoreScroll>=0?restoreTop:resultScroll==null||resultScroll.getChildCount()==0?0:resultScroll.getChildAt(0).getTop()-resultScroll.getPaddingTop();
@@ -412,14 +413,14 @@ public final class MainActivity extends Activity {
     }
     void settings(){
         String[] choices=demo?new String[]{"Connect to Jellyfin","About Rewindamp"}:new String[]{"Playback transitions","Downloads","Pause downloads","Resume downloads","Sync favourites and play history","Sign out","About Rewindamp"};
-        new AlertDialog.Builder(this).setTitle("Rewindamp 0.3.6").setItems(choices,(d,i)->{
+        new AlertDialog.Builder(this).setTitle("Rewindamp 0.4.0").setItems(choices,(d,i)->{
             if(demo){if(i==0){demo=false;loginScreen();}else about();return;}
             switch(i){case 0->TransitionSettings.show(this);case 1->navigate("Offline");case 2->{offline.paused(true);say("Downloads paused");}case 3->{offline.paused(false);say("Downloads resumed");}
                 case 4->{say("Syncing…");io.execute(()->{new PlaybackReporter(api,store).sync();handler.post(()->say("Sync attempted · pending changes retry automatically"));});}
                 case 5->new AlertDialog.Builder(this).setTitle("Sign out?").setMessage("Playback and downloads stop. Saved queues and downloads stay private to this account on the phone.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(dd,w)->signOut()).show();default->about();}
         }).setNegativeButton("Close",null).show();
     }
-    void about(){new AlertDialog.Builder(this).setTitle("Rewindamp 0.3.6").setMessage("Classic controls. Your Jellyfin music.\n\nTap tracks to append. Clear only in Queue.\nHold ≡ to drag playlist or queue entries. Long-press a track to select several.\n\n10-band EQ with automatic headroom. The spectrum follows decoded audio; no microphone permission.\n\nAndroid Auto requires sign-in on your phone. For a sideloaded build, enable unknown sources in Android Auto developer settings.\n\nIndependent app; not affiliated with Winamp or Jellyfin.").setPositiveButton("Close",null).show();}
+    void about(){new AlertDialog.Builder(this).setTitle("Rewindamp 0.4.0").setMessage("Classic controls. Your Jellyfin music.\n\nTap tracks to append. Clear only in Queue.\nHold ≡ to drag playlist or queue entries. Long-press a track to select several.\n\n10-band EQ with automatic headroom. The spectrum follows decoded audio; no microphone permission.\n\nAndroid Auto requires sign-in on your phone. For a sideloaded build, enable unknown sources in Android Auto developer settings.\n\nIndependent app; not affiliated with Winamp or Jellyfin.").setPositiveButton("Close",null).show();}
     void signOut(){
         generation++;busy=false;JellyfinApi previous=api;if(player!=null)player.pause();if(controllerFuture!=null){MediaController.releaseFuture(controllerFuture);controllerFuture=null;}player=null;
         stopService(new Intent(this,PlaybackService.class));OfflineLibrary.pause(this);new androidx.media3.exoplayer.scheduler.PlatformScheduler(this,42).cancel();SessionStore.clear(this);browseHistory.clear();previousBrowseRows=null;previousBrowse=null;api=null;offline=null;store=null;undo=null;pendingQueue.clear();shown.clear();parent=null;section="Tracks";query="";loginScreen();

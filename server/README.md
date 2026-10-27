@@ -1,0 +1,213 @@
+# Rewindamp Server
+
+An independent, self-hosted podcast archive and listening-history service, paired with
+Rewindamp for Android. Classic listening on modern devices. No Jellyfin dependency,
+account credentials, cloud subscription or third-party Python packages are required.
+
+This first version serves podcasts. Music/video scanning, transcoding, multi-user accounts
+and an Android TV client are future work. Jellyfin continues to serve the existing music library.
+
+## Run this repository independently
+
+Set absolute persistent directories outside the source checkout, then start the standalone
+Compose project. The same image also integrates with the larger media stack described below.
+
+```sh
+export REWINDAMP_CONFIG_DIR=/absolute/private/config/rewindamp
+export REWINDAMP_MEDIA_DIR=/absolute/media/podcasts
+mkdir -p "$REWINDAMP_CONFIG_DIR" "$REWINDAMP_MEDIA_DIR"
+docker compose -f server/compose.yaml up -d --build
+```
+
+The default direct endpoint is localhost:13510; use a HTTPS reverse proxy for remote devices.
+To retrieve the owner token use `docker compose -f server/compose.yaml exec rewindamp-server
+python server.py token`. Run backend tests here with `python3 -m unittest discover -s server/tests -v`
+and Android tests from the repository root with `./scripts/podcast-integration-test.sh`.
+
+## Run in the media stack
+
+From `media-server-docker-setup/`:
+
+```sh
+mkdir -p "../media-server-configuration/rewindamp-server" "../media/podcasts"
+docker compose up -d --build rewindamp-server
+docker compose ps rewindamp-server
+docker compose logs --tail 30 rewindamp-server
+```
+
+Use the actual `CONFIG_DIR`/`MEDIA_DIR` from your `.env` if they differ. The non-root
+container runs as UID/GID 1000 by default (build arguments follow PUID/PGID); its two
+mounted directories must be writable by that user. Nothing is mounted from Jellyfin,
+Sonarr, Radarr, the legacy music collection or the Docker socket.
+
+The management UI is at **https://rewindamp.snappyapps.com.au** in this installation.
+The direct port defaults to `127.0.0.1:13510`, for local diagnostics only. SWAG connects to
+`rewindamp-server:8080` over the Compose network; its source-controlled configuration is
+`deploy/rewindamp.subdomain.conf`. The root Compose file includes the subdomain in SWAG's
+certificate request. Configure DNS before recreating SWAG for another hostname.
+
+## Connect the app or browser
+
+The server creates a private, randomly generated owner token on first start. Retrieve it
+locally when connecting a device:
+
+```sh
+docker compose exec rewindamp-server python server.py token
+```
+
+Treat that output like a password: do not commit it, paste it into an issue, put it in a
+URL or bundle it into an APK. The browser asks for the token and keeps it in memory until
+the tab closes or disconnects. Android stores its connection encrypted with Android Keystore.
+All API and audio requests use an Authorization header; only the static login UI and health
+endpoint are public. Use HTTPS except on a trusted local test network.
+
+In Android, select **Podcasts** in the library menu, or **Podcasts → Connect podcast server**
+from the connection screen. Podcasts work without a Jellyfin login. Music and podcast queues,
+credentials, phone downloads and listening history are separate. Rewindamp uses the clean
+Android application ID `dev.rewindamp`; old Jellyamp installs remain separate.
+
+This is a **single-owner** server. Every connected device shares the same listening history
+and owner permissions. It does not offer separate family/user accounts in this version.
+Disconnecting a phone removes its connection and stops its services, while preserving private
+saved data for that server. To revoke all connected devices, stop the server, replace
+`owner-token` with a new random value of at least 32 characters, then start and reconnect.
+
+## Initial subscriptions
+
+Seeded once, without overwriting subsequent pass choices:
+
+| Show | Feed | Pass |
+|---|---|---|
+| 99% Invisible | https://feeds.simplecast.com/BqbsxVfO | Rolling last two years |
+| Swindled | https://audioboom.com/channels/5170514.rss | Rolling last 12 months |
+| Smosh Reads Reddit Stories | https://rss.amperwave.net/v2/feed/audacynetwork/9c990b304783c10b9f9e1e16a0ac191d | Future episodes only |
+| The Louis Theroux Podcast | https://feeds.megaphone.fm/GLT1948741183 | Future episodes only |
+
+RSS is refreshed every 30 minutes. A single background worker downloads selected enclosures
+in batches of ten, newest first, and retries failed downloads with backoff. Files become
+playable only after a complete, nonempty download is atomically published. Redirects are
+limited, checked at every hop, and pinned to resolved public IPs; loopback, private network,
+metadata-service addresses, URL credentials and HTTPS downgrades are blocked.
+
+Available passes are **all available**, **future**, **last N years**, **from a date**, and
+**manual**. Android offers one/two-year presets and a January 1 shortcut. Calendar-year
+windows roll daily; leap days are handled. Undated/future-dated feed entries do not qualify
+for date-based acquisition. "All" means episodes still present in the feed, not a publisher's
+entire historical catalogue. The feed may stop exposing older episodes.
+
+A future-only subscription establishes its baseline on the first **successful** feed import.
+Existing items are remembered without downloading them. Later items qualify only when newly
+seen and published after that baseline. Late backfills of old episodes do not become new.
+Changing to future-only later uses the original baseline, not a new subscription date.
+A failed initial fetch does not accidentally select a back catalogue.
+
+**Passes select new downloads; they do not delete existing archive files.** Older saved files
+and episode history remain available when a rolling window moves on. Manual episode requests
+persist across refreshes. There is deliberately no server-side media deletion API in this
+first version. Phone-copy removal never touches the archive.
+
+The archive download ceiling defaults to **50 GiB** (`REWINDAMP_MAX_ARCHIVE_BYTES`). Individual
+episodes are limited to 1 GiB (`REWINDAMP_MAX_EPISODE_BYTES`, optional container environment).
+At least 128 MiB of free space is reserved. Errors remain visible and retry; nothing is
+silently removed to make room. Backups and metadata are outside that media download ceiling.
+
+## Listening history and playback
+
+Each episode keeps an independent position and state: **unplayed**, **in progress**, **played**
+or **dismissed**. Played/dismissed entries are excluded from the unplayed inbox. They can still
+be selected explicitly from a show's complete listing. Completing playback or choosing Mark
+played completes an episode; seeking close to the end alone does not mark it played.
+
+RSS GUIDs identify episodes within a feed, with enclosure aliases preserving identity when
+a publisher changes a GUID but keeps the audio URL. Stable GUIDs also survive enclosure changes.
+There is no fuzzy title matching: if a publisher changes both GUID and enclosure URL, an episode
+can appear as new. Feed URL migration is not automatically reconciled in this first version.
+
+Android checkpoints positions approximately every three seconds and on playback changes.
+Local state and outbound events commit together in one app-private AtomicFile journal. Failed
+sync stays queued and retries while the service runs; a manual sync is also available. Event
+IDs are idempotent. Completion stays completed despite stale progress reports. Explicit resets
+advance a generation, so delayed offline events from before the reset cannot complete it again.
+Positions use event time to reject older observations; normal backward seeking remains possible.
+Keep device clocks synchronized for accurate cross-device resume ordering.
+
+The podcast session exposes **15 seconds back / 30 seconds forward**, playback speed,
+notification controls and its own trusted Android Auto media browser. It uses spoken-audio
+attributes, without shuffle, music crossfading or a music EQ/spectrum path. Phone downloads use
+Media3's private, server/owner-scoped cache and can be removed independently of history.
+
+The classic browser management UI supports feed/pass editing, played/dismissed/reset controls
+and listening. Its simple player loads the complete episode into browser memory before playback;
+use Android for streaming, durable offline sync and long listening sessions. Browser progress
+requires connectivity and closing a tab during a network failure can lose its last few seconds.
+Browser state is not the durable offline journal used by Android.
+
+## Backup and restore
+
+Runtime state is outside the image:
+
+- `${CONFIG_DIR}/rewindamp-server/library.sqlite3`: subscriptions, episode identities, progress,
+  event deduplication and archive file references (SQLite WAL).
+- `${CONFIG_DIR}/rewindamp-server/owner-token`: sensitive owner credential.
+- `${MEDIA_DIR}/podcasts/`: immutable, downloaded episode files, under feed/episode IDs.
+- `${CONFIG_DIR}/rewindamp-server/backups/`: automatic daily **database-only** online snapshots.
+
+Database snapshots alone are **not a complete podcast backup**. Create a full archive containing
+a consistent database snapshot, the owner credential and every referenced episode file:
+
+```sh
+docker compose exec rewindamp-server python server.py backup --full
+```
+
+The command prints the container path of its timestamped `.tar` in `/config/backups/`.
+Copy that archive to a separate disk or offsite backup system; keeping it beside the running
+database protects against mistakes, not disk failure. Full backups are explicit because
+repeated copies of a large audio archive consume substantial space. They are not compressed
+because episode audio is already compressed. The server does not remove old backups.
+
+To restore, stop the service, extract a **trusted** full archive into a new empty directory,
+then copy its `config/` files and `podcasts/` tree into new empty persistent mount directories.
+Preserve directory ownership, configure the mounts, and start the service. Do not extract over
+a running database or replace existing media without first preserving the current data.
+Database episode paths are relative, so restoring into a different media mount works.
+Restoring preserves the owner token: rotate it if the backup has been exposed.
+
+For an existing external backup system, include both persistent roots and use the SQLite
+online snapshots (or stop the service) instead of copying only an actively written SQLite file.
+Phone-only pending listening events need to sync before they can appear in a server backup.
+
+## API and verification
+
+Bearer owner token is required for all `/api/` routes. There are no tokens in media URLs,
+cross-origin API access or public file listings.
+
+- `GET /health`, `GET /api/feeds`
+- `POST /api/feeds`: `url`, `title`, `mode`, `years`, optional Unix-seconds `since`.
+- `POST /api/feeds/{id}/refresh`: queue a refresh (JSON body `{}`).
+- `GET /api/episodes?feed_id=…&unplayed=true&offset=0&limit=100`
+- `POST /api/episodes/{id}/download`: select an episode explicitly (JSON body `{}`).
+- `GET` / `HEAD /api/episodes/{id}/audio`: authenticated byte ranges for seeking/downloading.
+- `POST /api/progress/{id}`: unique `event_id`, current `epoch`, `position` in seconds,
+  `observed` Unix seconds, `action` (`progress`, `played`, `dismissed`, `reset`).
+
+Run offline deterministic backend tests from the stack repository:
+
+```sh
+python3 -m unittest discover -s rewindamp-server/tests -v
+docker compose config --quiet
+```
+
+Build Android with JDK 17 and Android SDK 35, then run the synthetic integration fixture with
+an emulator. It uses loopback port 18097, an emulator-only account and generated tones; no
+production podcasts, credentials or history are used by tests:
+
+```sh
+cd rewindamp-android
+./gradlew assembleDebug lintDebug
+./scripts/podcast-integration-test.sh
+```
+
+The tests cover subscription boundaries, leap dates, future-only baseline, failed fetches,
+identity aliases, duplicate/stale events, reset generations, backwards seeks, storage limits,
+partial downloads, authentication, media byte ranges, full backup restoration and Android
+streaming/seeking/downloads that can be read without an upstream source.

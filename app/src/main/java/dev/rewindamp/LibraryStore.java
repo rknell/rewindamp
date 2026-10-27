@@ -27,6 +27,11 @@ final class LibraryStore {
         AtomicFile file=new AtomicFile(new File(directory,hash(key)+".json"));java.io.FileOutputStream output=null;
         try{output=file.startWrite();output.write(json.toString().getBytes(StandardCharsets.UTF_8));file.finishWrite(output);}catch(Exception e){if(output!=null)file.failWrite(output);}
     }
+    synchronized void writeChecked(String key,JSONObject json){
+        AtomicFile file=new AtomicFile(new File(directory,hash(key)+".json"));java.io.FileOutputStream output=null;
+        try{output=file.startWrite();output.write(json.toString().getBytes(StandardCharsets.UTF_8));file.finishWrite(output);}
+        catch(Exception e){if(output!=null)file.failWrite(output);throw new IllegalStateException("Could not persist private listening history",e);}
+    }
     void tracks(String key,List<Track> tracks){try{JSONArray array=new JSONArray();for(Track t:tracks)array.put(t.json());write(key,new JSONObject().put("Items",array));}catch(Exception ignored){}}
     List<Track> tracks(String key){try{return JellyfinApi.parse(read(key));}catch(Exception ignored){return new ArrayList<>();}}
     File artFile(Track track){return new File(directory,"art-"+hash(track.imageId+":"+track.imageTag)+".jpg");}

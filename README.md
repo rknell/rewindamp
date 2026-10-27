@@ -26,6 +26,20 @@ phones and Android Auto, and thoughtful UI polish all help. See [Contributing](C
 Independent app; unaffiliated with Winamp or Jellyfin. The interface is drawn natively;
 no original Winamp skin images are bundled. Demo mode uses fictional titles.
 
+## Podcasts and Rewindamp Server
+
+Rewindamp now includes a separate **Podcasts** deck using the same classic metal buttons,
+green LCD and title rails. Choose Podcasts in the library menu, or connect from the login
+screen without a Jellyfin account. The independent Docker server downloads RSS episodes,
+archives them and synchronizes per-episode listening history. See
+[Rewindamp Server](server/README.md) for deployment, authentication, the four
+initial subscription passes, backup/restore and current limitations.
+
+Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
+played/dismissed/reset actions and app-private phone downloads are separate from music.
+The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.0**.
+
 ## Install
 
 Get the APK from [GitHub Releases](https://github.com/rknell/rewindamp/releases/latest),
@@ -214,6 +228,7 @@ With an Android emulator running, Docker, ffmpeg and Python 3 available:
 ./scripts/integration-test.sh
 ```
 
+The script also starts a synthetic podcast fixture on loopback port 18097.
 The script creates an isolated Jellyfin 10.11 on loopback port 18096 with two generated tones
 and a synthetic album cover, and removes only its own test container on exit. It leaves its
 printed temporary test directory for inspection. No production mounts, credentials or media
