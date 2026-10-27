@@ -72,6 +72,29 @@ Disconnecting a phone removes its connection and stops its services, while prese
 saved data for that server. To revoke all connected devices, stop the server, replace
 `owner-token` with a new random value of at least 32 characters, then start and reconnect.
 
+## Find and add podcasts in Android
+
+Tap **+ FIND PODCASTS** in the Podcasts deck, enter a title or publisher, then tap **GO**
+or the keyboard's Search key. Results come from Apple's public iTunes Search API with
+`media=podcast`, `entity=podcast`, `country=AU`, and `limit=10`. No Apple API key or account
+is needed. Each result shows the podcast title, publisher and genre. Already subscribed
+feeds are labelled and cannot be added again from discovery.
+
+Choose **+ SUBSCRIBE**, select a subscription pass, and confirm. The default is future-only;
+back-catalogue acquisition requires choosing a date range or All available. Merely searching
+or opening a result does not create a subscription or download episodes. After subscribing,
+the app returns to the library with that show selected. Manual RSS entry remains in Settings.
+
+The server sends only the search term and fixed catalogue parameters to Apple. It does not
+forward its owner token, local listening history or subscriptions. Results are cached for ten
+minutes, with a maximum of 15 uncached requests per minute per server. Subscription badges
+are refreshed from local state even for cached results. Catalogue failures can be retried;
+RSS subscriptions and playback continue independently. Private-feed URL checks still apply
+when adding a search result. Re-adding the exact feed URL preserves its existing pass and
+future-only baseline rather than overwriting them.
+
+Apple API reference: https://performance-partners.apple.com/search-api
+
 ## Initial subscriptions
 
 Seeded once, without overwriting subsequent pass choices:
@@ -176,13 +199,21 @@ For an existing external backup system, include both persistent roots and use th
 online snapshots (or stop the service) instead of copying only an actively written SQLite file.
 Phone-only pending listening events need to sync before they can appear in a server backup.
 
+## Branding assets
+
+The approved transparent pixel-art logo is `static/assets/rewindamp-logo.png`,
+served at `/assets/rewindamp-logo.png`. The PNG favicon and multi-size ICO are
+nearest-neighbour exports of that master to retain the pixel-art edges.
+
 ## API and verification
 
 Bearer owner token is required for all `/api/` routes. There are no tokens in media URLs,
 cross-origin API access or public file listings.
 
 - `GET /health`, `GET /api/feeds`
-- `POST /api/feeds`: `url`, `title`, `mode`, `years`, optional Unix-seconds `since`.
+- `GET /api/podcasts/search?term=…`: authenticated Apple Podcasts discovery (AU, ten results).
+- `POST /api/feeds`: `url`, `title`, `mode`, `years`, optional Unix-seconds `since`;
+  `only_if_new=true` preserves an existing subscription instead of changing its pass.
 - `POST /api/feeds/{id}/refresh`: queue a refresh (JSON body `{}`).
 - `GET /api/episodes?feed_id=…&unplayed=true&offset=0&limit=100`
 - `POST /api/episodes/{id}/download`: select an episode explicitly (JSON body `{}`).

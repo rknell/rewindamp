@@ -13,7 +13,7 @@ import threading
 import unittest
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from server import Archive, Server, parse_feed, public_address, years_ago
+from server import Archive, Server, parse_feed, public_address, years_ago, CatalogueUnavailable, CatalogueRateLimited
 
 NOW=dt.datetime(2026,10,27,tzinfo=dt.timezone.utc).timestamp()
 def rss(*items):
@@ -136,6 +136,64 @@ class ArchiveTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.archive.import_feed(f,b'<html/>')
         self.assertEqual(len(self.archive.episodes()),1)
 
+class CatalogueTests(unittest.TestCase):
+    setUp = ArchiveTests.setUp
+    feed = ArchiveTests.feed
+    def catalogue(self, results):
+        self.calls=[]
+        @contextlib.contextmanager
+        def fetch(url):
+            self.calls.append(url)
+            yield Response(json.dumps({'results':results}).encode())
+        self.archive.fetch=fetch
+    def test_search_parameters_filtering_and_no_subscription_side_effect(self):
+        self.catalogue([
+            {'kind':'song','feedUrl':'https://example.com/music'},
+            {'kind':'podcast','collectionName':'Missing feed'},
+            {'kind':'podcast','feedUrl':'file:///etc/passwd'},
+            {'kind':'podcast','feedUrl':'https://user:password@example.com/private'},
+            {'kind':'podcast','collectionId':12,'collectionName':'Show & more','artistName':'Publisher','feedUrl':'https://example.com/feed','collectionViewUrl':'https://podcasts.apple.com/au/podcast/id12'},
+            {'kind':'podcast','collectionName':'Duplicate','feedUrl':'https://example.com/feed'}])
+        rows=self.archive.search_podcasts('  Show & more  ')
+        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['title'],'Show & more');self.assertFalse(rows[0]['subscribed'])
+        self.assertEqual(self.archive.rows('SELECT id FROM feeds'),[])
+        from urllib.parse import parse_qs,urlsplit
+        params=parse_qs(urlsplit(self.calls[0]).query)
+        self.assertEqual(params,{'term':['Show & more'],'media':['podcast'],'entity':['podcast'],'country':['AU'],'limit':['10']})
+    def test_cache_is_case_insensitive_but_subscription_flags_are_fresh(self):
+        self.catalogue([{'kind':'podcast','collectionName':'Fixture','feedUrl':'https://example.com/feed'}])
+        self.assertFalse(self.archive.search_podcasts('fixture')[0]['subscribed'])
+        id=self.feed('years',1)
+        result=self.archive.search_podcasts(' FIXTURE ')[0]
+        self.assertEqual(len(self.calls),1);self.assertTrue(result['subscribed']);self.assertEqual(result['feed_id'],id)
+        self.now+=601;self.archive.search_podcasts('fixture');self.assertEqual(len(self.calls),2)
+    def test_duplicate_add_preserves_original_pass_and_baseline(self):
+        id=self.feed('years',1);self.archive.import_feed(id,rss(('old',NOW-100)))
+        again=self.archive.subscribe('Different name','https://example.com/feed','future',only_if_new=True)
+        self.assertEqual(id,again)
+        row=self.archive.rows('SELECT * FROM feeds')[0]
+        self.assertEqual((row['mode'],row['years'],row['baseline']),('years',1,NOW))
+    def test_invalid_term_does_not_contact_apple(self):
+        self.catalogue([])
+        for term in ('','x','x'*121):
+            with self.assertRaises(ValueError):self.archive.search_podcasts(term)
+        self.assertEqual(self.calls,[])
+    def test_rate_budget_and_cached_queries(self):
+        self.catalogue([])
+        for i in range(15):self.archive.search_podcasts('term '+str(i))
+        self.archive.search_podcasts('term 0')
+        with self.assertRaises(CatalogueRateLimited):self.archive.search_podcasts('another term')
+        self.now+=61;self.archive.search_podcasts('another term');self.assertEqual(len(self.calls),16)
+    def test_unavailable_or_malformed_catalogue_is_not_cached(self):
+        @contextlib.contextmanager
+        def bad(url):yield Response(b'not json')
+        self.archive.fetch=bad
+        with self.assertRaises(CatalogueUnavailable):self.archive.search_podcasts('fixture')
+        self.catalogue([]);self.assertEqual(self.archive.search_podcasts('fixture'),[])
+    def test_untrusted_apple_links_are_removed_and_result_limit_is_bounded(self):
+        self.catalogue([{'kind':'podcast','feedUrl':'https://example.com/feed'+str(i),'collectionViewUrl':'https://untrusted.example.com'} for i in range(20)])
+        rows=self.archive.search_podcasts('shows');self.assertEqual(len(rows),10);self.assertTrue(all(row['apple_url']=='' for row in rows))
+
 class NetworkTests(unittest.TestCase):
     def test_ssrf_blocks_private_and_mixed_dns(self):
         for ip in ('127.0.0.1','10.0.0.1','169.254.169.254','::1','192.168.1.2'):
@@ -159,6 +217,26 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request('/api/feeds')[0],401)
         self.assertEqual(self.request('/api/feeds?token='+self.archive.token)[0],401)
         self.assertEqual(self.request('/api/feeds',{'Authorization':'Bearer '+self.archive.token})[0],200)
+    def test_public_branding_assets(self):
+        for path, signature, content_type in (
+            ('/favicon.png?v=pixel-1', b'\x89PNG\r\n\x1a\n', 'image/png'),
+            ('/favicon.ico', b'\x00\x00\x01\x00', None),
+            ('/assets/rewindamp-logo.png', b'\x89PNG\r\n\x1a\n', 'image/png'),
+        ):
+            with self.subTest(path=path):
+                status, headers, body = self.request(path)
+                self.assertEqual(status, 200)
+                self.assertTrue(body.startswith(signature))
+                if content_type:
+                    self.assertEqual(headers['Content-Type'], content_type)
+                self.assertEqual(int(headers['Content-Length']), len(body))
+                status, head_headers, head_body = self.request(path, method='HEAD')
+                self.assertEqual(status, 200)
+                self.assertEqual(head_body, b'')
+                self.assertEqual(head_headers['Content-Length'], headers['Content-Length'])
+        self.assertEqual(self.request('/assets/../server.py')[0], 401)
+        self.assertIn(b'/favicon.png?v=pixel-1', self.request('/')[2])
+
     def test_seek_ranges_head_and_unauthorized_media(self):
         id=self.episode()
         @contextlib.contextmanager
@@ -170,6 +248,15 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request(path,{**auth,'Range':'bytes=-3'})[2],b'789')
         self.assertEqual(self.request(path,{**auth,'Range':'bytes=90-'})[0],416)
         self.assertEqual(self.request(path,auth,'HEAD')[2],b'')
+    def test_catalogue_requires_owner_token_and_handles_upstream_failure(self):
+        self.assertEqual(self.request('/api/podcasts/search?term=fixture')[0],401)
+        auth={'Authorization':'Bearer '+self.archive.token}
+        self.archive.search_podcasts=lambda term:[]
+        status,_,body=self.request('/api/podcasts/search?term=fixture',auth)
+        self.assertEqual(status,200);self.assertEqual(json.loads(body)['country'],'AU')
+        def unavailable(term):raise CatalogueUnavailable()
+        self.archive.search_podcasts=unavailable
+        self.assertEqual(self.request('/api/podcasts/search?term=fixture',auth)[0],502)
     def test_reject_cross_origin_mutation(self):
         status,_,_=self.request('/api/feeds',{'Authorization':'Bearer '+self.archive.token,'Origin':'https://evil.example','Content-Type':'application/json'},'POST','{}')
         self.assertEqual(status,403)

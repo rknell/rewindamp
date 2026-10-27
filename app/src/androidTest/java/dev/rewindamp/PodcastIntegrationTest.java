@@ -35,6 +35,32 @@ public class PodcastIntegrationTest {
         instrumentation.runOnMainSync(()->activity.openSearch("Neon"));Thread.sleep(1000);screenshot("search");
         instrumentation.runOnMainSync(activity::finish);
     }
+    android.view.View described(android.view.View root,String value){
+        if(value.equals(root.getContentDescription()))return root;
+        if(root instanceof android.view.ViewGroup group)for(int i=0;i<group.getChildCount();i++){var match=described(group.getChildAt(i),value);if(match!=null)return match;}return null;
+    }
+    @Test public void searchesCatalogueAndSubscribesWithFuturePass()throws Exception{
+        var instrumentation=InstrumentationRegistry.getInstrumentation();Context context=instrumentation.getTargetContext();
+        PodcastApi api=new PodcastApi("http://10.0.2.2:18097","isolated-podcast-fixture-token-00000001");PodcastApi.save(context,api);
+        PodcastDiscoveryActivity activity=(PodcastDiscoveryActivity)instrumentation.startActivitySync(new Intent(context,PodcastDiscoveryActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        instrumentation.runOnMainSync(()->{((android.widget.EditText)described(activity.getWindow().getDecorView(),"Podcast search")).setText("empty fixture");find(activity.getWindow().getDecorView(),"GO").performClick();});
+        waitFor(()->{boolean[] found={false};instrumentation.runOnMainSync(()->found[0]=find(activity.getWindow().getDecorView(),"NO RESULTS · Try another title or publisher.")!=null);return found[0];});
+        instrumentation.runOnMainSync(()->{((android.widget.EditText)described(activity.getWindow().getDecorView(),"Podcast search")).setText("unavailable fixture");find(activity.getWindow().getDecorView(),"GO").performClick();});
+        waitFor(()->{boolean[] found={false};instrumentation.runOnMainSync(()->found[0]=find(activity.getWindow().getDecorView(),"Search unavailable. Retry, or add an RSS feed in Podcast settings.")!=null);return found[0];});
+        instrumentation.runOnMainSync(()->{((android.widget.EditText)described(activity.getWindow().getDecorView(),"Podcast search")).setText("synthetic");find(activity.getWindow().getDecorView(),"GO").performClick();});
+        waitFor(()->{boolean[] found={false};instrumentation.runOnMainSync(()->found[0]=find(activity.getWindow().getDecorView(),"Synthetic Discovery Show")!=null);return found[0];});
+        instrumentation.runOnMainSync(()->assertFalse(find(activity.getWindow().getDecorView(),"ALREADY SUBSCRIBED").isEnabled()));
+        screenshot("podcast-discovery");
+        instrumentation.runOnMainSync(()->find(activity.getWindow().getDecorView(),"+ SUBSCRIBE").performClick());
+        // Selecting a result alone must not subscribe or acquire anything.
+        assertEquals(1,api.request("/api/feeds",null).getJSONArray("items").length());
+        waitFor(()->{var root=instrumentation.getUiAutomation().getRootInActiveWindow();if(root==null)return false;
+            for(var node:root.findAccessibilityNodeInfosByText("Subscribe"))if(node.getText()!=null&&node.getText().toString().equalsIgnoreCase("Subscribe")&&node.isClickable())return node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);return false;});
+        waitFor(()->api.request("/api/feeds",null).getJSONArray("items").length()==2);
+        var feeds=api.request("/api/feeds",null).getJSONArray("items");JSONObject added=null;for(int i=0;i<feeds.length();i++)if(feeds.getJSONObject(i).getString("title").equals("Synthetic Discovery Show"))added=feeds.getJSONObject(i);
+        assertNotNull(added);assertEquals("future",added.getString("mode"));assertTrue(added.isNull("baseline"));
+        assertTrue(api.request("/api/podcasts/search?term=synthetic",null).getJSONArray("items").getJSONObject(0).getBoolean("subscribed"));
+    }
     @Test public void podcastsStreamSeekDownloadAndKeepPlayedHistory()throws Exception{
         var instrumentation=InstrumentationRegistry.getInstrumentation();Context context=instrumentation.getTargetContext();
         PodcastApi api=new PodcastApi("http://10.0.2.2:18097","isolated-podcast-fixture-token-00000001");

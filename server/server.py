@@ -25,7 +25,7 @@ import tarfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit, urljoin, parse_qs
+from urllib.parse import urlsplit, urljoin, parse_qs, urlencode
 import xml.etree.ElementTree as ET
 
 LOG = logging.getLogger('rewindamp')
@@ -150,6 +150,9 @@ CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, episode_id TEXT NOT NULL,
 CREATE INDEX IF NOT EXISTS episode_feed_date ON episodes(feed_id,published);
 '''
 
+class CatalogueUnavailable(Exception): pass
+class CatalogueRateLimited(Exception): pass
+
 class Archive:
     def __init__(self, config, media, fetch=remote, clock=time.time):
         self.config, self.media = Path(config), Path(media)
@@ -158,6 +161,9 @@ class Archive:
         self.fetch, self.clock = fetch, clock
         self.lock = threading.RLock()
         self.worker_lock = threading.Lock()
+        self.catalogue_lock = threading.Lock()
+        self.catalogue_cache = {}
+        self.catalogue_calls = []
         self.db = sqlite3.connect(self.config/'library.sqlite3', check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
@@ -179,7 +185,7 @@ class Archive:
         with self.lock:
             return [dict(r) for r in self.db.execute(sql,args)]
 
-    def subscribe(self, title, url, mode='future', years=0, since=None):
+    def subscribe(self, title, url, mode='future', years=0, since=None, only_if_new=False):
         public_address(url)
         if mode not in ('all','future','years','since','manual'):
             raise ValueError('Invalid subscription mode')
@@ -190,10 +196,57 @@ class Archive:
             raise ValueError('A publication cutoff timestamp is required')
         feed_id = digest(url)
         with self.lock, self.db:
+            existing = self.rows('SELECT id FROM feeds WHERE url=?',(url,))
+            if existing and only_if_new: return existing[0]['id']
             self.db.execute('INSERT INTO feeds(id,title,url,mode,years,since,subscribed) VALUES(?,?,?,?,?,?,?) ON CONFLICT(url) DO UPDATE SET mode=excluded.mode,years=excluded.years,since=excluded.since',
                 (feed_id,str(title)[:300],url,mode,years,since,self.clock()))
             self.reevaluate(feed_id)
         return feed_id
+
+    def search_podcasts(self, term):
+        term = ' '.join(str(term).split())
+        if not 2 <= len(term) <= 120:
+            raise ValueError('Search must contain 2–120 characters')
+        key = term.casefold()
+        with self.catalogue_lock:
+            now = self.clock()
+            cached = self.catalogue_cache.get(key)
+            if cached and now-cached[0] < 600:
+                items = cached[1]
+            else:
+                self.catalogue_calls = [stamp for stamp in self.catalogue_calls if now-stamp < 60]
+                if len(self.catalogue_calls) >= 15: raise CatalogueRateLimited()
+                self.catalogue_calls.append(now)
+                # Only the search term goes to Apple. Owner tokens and listening data never do.
+                url = 'https://itunes.apple.com/search?' + urlencode(dict(term=term,media='podcast',entity='podcast',country='AU',limit=10))
+                try:
+                    with self.fetch(url) as response: raw = response.read(2*1024*1024+1)
+                    if len(raw) > 2*1024*1024: raise ValueError('Oversized catalogue response')
+                    payload = json.loads(raw)
+                    if not isinstance(payload,dict) or not isinstance(payload.get('results'),list): raise ValueError('Invalid catalogue response')
+                    items, seen = [], set()
+                    for result in payload['results'][:50]:
+                        if not isinstance(result,dict) or result.get('kind') != 'podcast': continue
+                        feed_url = result.get('feedUrl')
+                        if not isinstance(feed_url,str) or len(feed_url)>4000: continue
+                        parsed = urlsplit(feed_url)
+                        if parsed.scheme not in ('http','https') or not parsed.hostname or parsed.username or parsed.password or parsed.fragment or parsed.port not in (None,80,443): continue
+                        if feed_url in seen: continue
+                        seen.add(feed_url)
+                        link = result.get('collectionViewUrl') or result.get('trackViewUrl') or ''
+                        if not isinstance(link,str) or urlsplit(link).scheme != 'https' or urlsplit(link).hostname not in ('podcasts.apple.com','itunes.apple.com'): link = ''
+                        items.append(dict(id=str(result.get('collectionId') or result.get('trackId') or ''),
+                            title=str(result.get('collectionName') or result.get('trackName') or 'Untitled podcast')[:300],
+                            author=str(result.get('artistName') or '')[:300],feed_url=feed_url,
+                            genre=str(result.get('primaryGenreName') or '')[:100],apple_url=link))
+                        if len(items) == 10: break
+                    if len(self.catalogue_cache)>=64: self.catalogue_cache.pop(next(iter(self.catalogue_cache)))
+                    self.catalogue_cache[key] = (now,items)
+                except Exception as exc:
+                    LOG.warning('Podcast catalogue search failed (%s)',type(exc).__name__)
+                    raise CatalogueUnavailable() from None
+            subscribed = {row['url']:row['id'] for row in self.rows('SELECT id,url FROM feeds')}
+            return [dict(item,subscribed=item['feed_url'] in subscribed,feed_id=subscribed.get(item['feed_url'])) for item in items]
 
     def seed(self):
         for title,url,mode,years in SEEDS:
@@ -392,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             path = urlsplit(self.path).path
             if path == '/health': return self.reply(200,{'status':'ok','service':'rewindamp-server'})
-            if path in ('/','/app.js','/style.css','/favicon.svg'):
+            if path in ('/','/app.js','/style.css','/favicon.png','/favicon.ico','/assets/rewindamp-logo.png'):
                 file = Path(__file__).parent/'static'/({'/':'index.html'}.get(path,path[1:]))
                 data = file.read_bytes()
                 self.send_response(200); self.send_header('Content-Type',mimetypes.guess_type(str(file))[0] or 'text/plain')
@@ -403,6 +456,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if not self.authorized(): return self.reply(401,{'error':'Owner token required'})
             query = parse_qs(urlsplit(self.path).query)
+            if path == '/api/podcasts/search':
+                try: return self.reply(200,{'items':self.archive.search_podcasts(query.get('term',[''])[0]),'country':'AU','provider':'Apple Podcasts'})
+                except CatalogueRateLimited: return self.reply(429,{'error':'Catalogue search is busy. Try again in a minute.'})
+                except CatalogueUnavailable: return self.reply(502,{'error':'Apple Podcasts search is unavailable. Try again later or add an RSS feed.'})
             if path == '/api/feeds':
                 return self.reply(200,{'items':self.archive.rows('SELECT f.*, (SELECT COUNT(*) FROM episodes e WHERE e.feed_id=f.id AND e.file IS NOT NULL) AS downloaded FROM feeds f ORDER BY title')})
             if path == '/api/episodes':
@@ -425,7 +482,7 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length))
             path = urlsplit(self.path).path
             if path == '/api/feeds':
-                feed_id = self.archive.subscribe(body.get('title','Podcast'),body['url'],body.get('mode','future'),body.get('years',0),body.get('since'))
+                feed_id = self.archive.subscribe(body.get('title','Podcast'),body['url'],body.get('mode','future'),body.get('years',0),body.get('since'),body.get('only_if_new') is True)
                 return self.reply(201,{'id':feed_id})
             match = re.fullmatch(r'/api/feeds/([a-f0-9]{32})/refresh',path)
             if match:

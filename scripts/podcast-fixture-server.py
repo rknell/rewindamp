@@ -19,4 +19,14 @@ id=archive.episodes()[0]['id'];destination=archive.media/feed;destination.mkdir(
 import shutil
 shutil.copyfile(args.directory/'signal.mp3',destination/(id+'.mp3'))
 with archive.lock,archive.db:archive.db.execute('UPDATE episodes SET file=?,bytes=?,duration=90,eligible=1 WHERE id=?',(feed+'/'+id+'.mp3',(destination/(id+'.mp3')).stat().st_size,id))
+# Catalogue and subscription validation are local fixtures; tests never call Apple or a live RSS feed.
+import server as fixture_server
+fixture_server.public_address=lambda url:(None,None)
+def catalogue(term):
+    if term=='empty fixture':return []
+    if term=='unavailable fixture':raise fixture_server.CatalogueUnavailable()
+    subscribed=archive.rows('SELECT id FROM feeds WHERE url=?',('https://example.com/discovery.rss',))
+    return [dict(id='fixture-discovery',title='Synthetic Discovery Show',author='Test Publisher',genre='Synthetic tests',feed_url='https://example.com/discovery.rss',apple_url='',subscribed=bool(subscribed),feed_id=subscribed[0]['id'] if subscribed else None),
+            dict(id='fixture-existing',title='Synthetic Signals',author='Test Publisher',genre='Synthetic tests',feed_url='https://example.com/fixture.rss',apple_url='',subscribed=True,feed_id=feed)]
+archive.search_podcasts=catalogue
 Server(('127.0.0.1',args.port),archive).serve_forever()
