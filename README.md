@@ -44,7 +44,8 @@ Android stores an encrypted session token rather than the password. Searches use
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Local development builds are **0.4.2**.
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.3**.
+Music and podcast decks use the same cog button to open Settings.
 
 ## Install
 
