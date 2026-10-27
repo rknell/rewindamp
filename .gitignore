@@ -1,0 +1,21 @@
+.gradle/
+local.properties
+**/build/
+*.jks
+*.keystore
+__pycache__/
+*.pyc
+
+# Local IDE files, credentials and generated artefacts
+.idea/
+*.iml
+.DS_Store
+.env
+.env.*
+*.apk
+*.aab
+*.apks
+*.log
+*.hprof
+.cxx/
+.externalNativeBuild/
