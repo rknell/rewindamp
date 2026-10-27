@@ -38,12 +38,13 @@ initial subscription passes, backup/restore and current limitations.
 Use **+ FIND PODCASTS** to search Apple Podcasts' Australian catalogue by title or publisher.
 Choose a show, select a subscription pass, then confirm. New subscriptions default to future
 episodes only; already subscribed feeds are labelled. Manual RSS entry is also available in
-podcast settings. Searches use the Rewindamp server; no Apple account or API key is needed.
+podcast settings. Connect using your owner password after setting it on the server website.
+Android stores an encrypted session token rather than the password. Searches use the Rewindamp server; no Apple account or API key is needed.
 
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Local development builds are **0.4.1**.
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.2**.
 
 ## Install
 

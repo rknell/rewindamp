@@ -194,6 +194,35 @@ class CatalogueTests(unittest.TestCase):
         self.catalogue([{'kind':'podcast','feedUrl':'https://example.com/feed'+str(i),'collectionViewUrl':'https://untrusted.example.com'} for i in range(20)])
         rows=self.archive.search_podcasts('shows');self.assertEqual(len(rows),10);self.assertTrue(all(row['apple_url']=='' for row in rows))
 
+class PasswordTests(unittest.TestCase):
+    setUp=ArchiveTests.setUp
+    def test_password_is_salted_and_sessions_are_hashed(self):
+        password='a memorable test passphrase'
+        token=self.archive.set_password(password)
+        self.assertTrue(self.archive.check_password(password));self.assertFalse(self.archive.check_password('wrong password'))
+        self.assertTrue(self.archive.authenticated(token));self.assertFalse(self.archive.authenticated(self.archive.token))
+        row=self.archive.rows('SELECT * FROM auth_settings')[0]
+        self.assertNotEqual(row['password_hash'],password);self.assertEqual(len(row['salt']),64)
+        self.assertNotEqual(self.archive.rows('SELECT token_hash FROM auth_sessions')[0]['token_hash'],token)
+    def test_login_expiry_logout_and_rotation(self):
+        first=self.archive.set_password('first memorable password')
+        second=self.archive.login('first memorable password');self.assertTrue(self.archive.authenticated(second))
+        self.archive.logout(first);self.assertFalse(self.archive.authenticated(first));self.assertTrue(self.archive.authenticated(second))
+        third=self.archive.set_password('second memorable password');self.assertFalse(self.archive.authenticated(second));self.assertTrue(self.archive.authenticated(third))
+        self.now+=31*86400;self.assertFalse(self.archive.authenticated(third))
+    def test_invalid_passwords_and_login_rate_limit(self):
+        for password in ('short','x'*257,None):
+            with self.assertRaises(ValueError):self.archive.set_password(password)
+        self.archive.set_password('memorable test password')
+        for _ in range(10):self.assertIsNone(self.archive.login('incorrect'))
+        with self.assertRaises(CatalogueRateLimited):self.archive.login('memorable test password')
+        self.now+=61;self.assertIsNotNone(self.archive.login('memorable test password'))
+    def test_password_and_session_survive_server_restart(self):
+        token=self.archive.set_password('restart test passphrase')
+        reopened=Archive(self.archive.config,self.archive.media,clock=lambda:self.now)
+        try:self.assertTrue(reopened.authenticated(token));self.assertTrue(reopened.check_password('restart test passphrase'))
+        finally:reopened.close()
+
 class NetworkTests(unittest.TestCase):
     def test_ssrf_blocks_private_and_mixed_dns(self):
         for ip in ('127.0.0.1','10.0.0.1','169.254.169.254','::1','192.168.1.2'):
@@ -257,6 +286,27 @@ class HTTPTests(unittest.TestCase):
         def unavailable(term):raise CatalogueUnavailable()
         self.archive.search_podcasts=unavailable
         self.assertEqual(self.request('/api/podcasts/search?term=fixture',auth)[0],502)
+    def test_password_setup_sign_in_change_and_sign_out(self):
+        auth={'Authorization':'Bearer '+self.archive.token}
+        def post(path,body,headers=None):return self.request(path,headers,'POST',json.dumps(body))
+        self.assertFalse(json.loads(self.request('/api/auth/status')[2])['password_set'])
+        self.assertEqual(post('/api/auth/password',{'new_password':'memorable test password'})[0],401)
+        status,_,raw=post('/api/auth/password',{'new_password':'memorable test password'},auth)
+        self.assertEqual(status,200);token=json.loads(raw)['access_token'];session={'Authorization':'Bearer '+token}
+        self.assertEqual(self.request('/api/feeds',auth)[0],401);self.assertEqual(self.request('/api/feeds',session)[0],200)
+        self.assertEqual(post('/api/auth/login',{'password':'wrong'})[0],401)
+        status,_,raw=post('/api/auth/login',{'password':'memorable test password'});self.assertEqual(status,200)
+        other={'Authorization':'Bearer '+json.loads(raw)['access_token']}
+        self.assertEqual(post('/api/auth/password',{'new_password':'another memorable password'},session)[0],401)
+        status,_,raw=post('/api/auth/password',{'current_password':'memorable test password','new_password':'another memorable password'},session)
+        self.assertEqual(status,200);fresh={'Authorization':'Bearer '+json.loads(raw)['access_token']}
+        self.assertEqual(self.request('/api/feeds',other)[0],401);self.assertEqual(self.request('/api/feeds',session)[0],401)
+        self.assertEqual(post('/api/auth/logout',{},fresh)[0],200);self.assertEqual(self.request('/api/feeds',fresh)[0],401)
+    def test_cross_origin_password_login_and_setup_are_blocked(self):
+        for path,body in [('/api/auth/login',{'password':'irrelevant'}),('/api/auth/password',{'new_password':'memorable test password'})]:
+            headers={'Authorization':'Bearer '+self.archive.token,'Origin':'https://untrusted.example'}
+            self.assertEqual(self.request(path,headers,'POST',json.dumps(body))[0],403)
+        self.assertFalse(self.archive.password_set())
     def test_reject_cross_origin_mutation(self):
         status,_,_=self.request('/api/feeds',{'Authorization':'Bearer '+self.archive.token,'Origin':'https://evil.example','Content-Type':'application/json'},'POST','{}')
         self.assertEqual(status,403)

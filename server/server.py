@@ -2,6 +2,7 @@
 """Rewindamp's independent, single-owner podcast archive. Python standard library only."""
 from __future__ import annotations
 import argparse
+import getpass
 import calendar
 import contextlib
 import datetime as dt
@@ -148,6 +149,9 @@ CREATE TABLE IF NOT EXISTS progress(
  observed REAL NOT NULL DEFAULT 0, updated REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, episode_id TEXT NOT NULL, received REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS episode_feed_date ON episodes(feed_id,published);
+CREATE TABLE IF NOT EXISTS auth_settings(id INTEGER PRIMARY KEY CHECK(id=1), salt TEXT NOT NULL, password_hash TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS auth_sessions(token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
+
 '''
 
 class CatalogueUnavailable(Exception): pass
@@ -164,6 +168,8 @@ class Archive:
         self.catalogue_lock = threading.Lock()
         self.catalogue_cache = {}
         self.catalogue_calls = []
+        self.auth_lock = threading.RLock()
+        self.login_attempts = []
         self.db = sqlite3.connect(self.config/'library.sqlite3', check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
@@ -184,6 +190,55 @@ class Archive:
     def rows(self, sql, args=()):
         with self.lock:
             return [dict(r) for r in self.db.execute(sql,args)]
+
+    def password_set(self):
+        return bool(self.rows('SELECT id FROM auth_settings WHERE id=1'))
+
+    @staticmethod
+    def password_hash(password, salt):
+        return hashlib.scrypt(password.encode('utf-8'),salt=bytes.fromhex(salt),n=32768,r=8,p=1,maxmem=64*1024**2,dklen=32).hex()
+
+    def check_password(self, password):
+        if not isinstance(password,str) or len(password)>256: return False
+        rows = self.rows('SELECT * FROM auth_settings WHERE id=1')
+        salt = rows[0]['salt'] if rows else '00'*32
+        expected = rows[0]['password_hash'] if rows else '00'*32
+        return hmac.compare_digest(self.password_hash(password,salt),expected) and bool(rows)
+
+    def authenticated(self, token):
+        if not isinstance(token,str) or not token or len(token)>256: return False
+        if not self.password_set(): return hmac.compare_digest(token.encode(),self.token.encode())
+        return bool(self.rows('SELECT token_hash FROM auth_sessions WHERE token_hash=? AND expires>?',(hashlib.sha256(token.encode()).hexdigest(),self.clock())))
+
+    def session(self):
+        token = secrets.token_urlsafe(36)
+        with self.lock,self.db:
+            self.db.execute('DELETE FROM auth_sessions WHERE expires<=?',(self.clock(),))
+            self.db.execute('INSERT INTO auth_sessions VALUES(?,?)',(hashlib.sha256(token.encode()).hexdigest(),self.clock()+30*86400))
+        return token
+
+    def verify_password(self,password):
+        with self.auth_lock:
+            now=self.clock();self.login_attempts=[stamp for stamp in self.login_attempts if now-stamp<60]
+            if len(self.login_attempts)>=10: raise CatalogueRateLimited()
+            self.login_attempts.append(now)
+            return self.check_password(password)
+
+    def login(self,password):
+        with self.auth_lock:
+            if not self.verify_password(password): return None
+            return self.session()
+
+    def set_password(self,password):
+        if not isinstance(password,str) or not 10<=len(password)<=256: raise ValueError('Choose a password with 10–256 characters')
+        salt=secrets.token_hex(32);hashed=self.password_hash(password,salt)
+        with self.auth_lock,self.lock,self.db:
+            self.db.execute('INSERT INTO auth_settings VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET salt=excluded.salt,password_hash=excluded.password_hash',(salt,hashed))
+            self.db.execute('DELETE FROM auth_sessions')
+        return self.session()
+
+    def logout(self,token):
+        with self.lock,self.db:self.db.execute('DELETE FROM auth_sessions WHERE token_hash=?',(hashlib.sha256(token.encode()).hexdigest(),))
 
     def subscribe(self, title, url, mode='future', years=0, since=None, only_if_new=False):
         public_address(url)
@@ -439,11 +494,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options','nosniff'); self.end_headers()
         if self.command != 'HEAD': self.wfile.write(data)
     def authorized(self):
-        return hmac.compare_digest(self.headers.get('Authorization',''), 'Bearer '+self.archive.token)
+        header=self.headers.get('Authorization','')
+        return header.startswith('Bearer ') and self.archive.authenticated(header[7:])
     def do_HEAD(self): self.do_GET()
     def do_GET(self):
         try:
             path = urlsplit(self.path).path
+            if path == '/api/auth/status': return self.reply(200,{'password_set':self.archive.password_set()})
             if path == '/health': return self.reply(200,{'status':'ok','service':'rewindamp-server'})
             if path in ('/','/app.js','/style.css','/favicon.png','/favicon.ico','/assets/rewindamp-logo.png'):
                 file = Path(__file__).parent/'static'/({'/':'index.html'}.get(path,path[1:]))
@@ -454,7 +511,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 if self.command != 'HEAD': self.wfile.write(data)
                 return
-            if not self.authorized(): return self.reply(401,{'error':'Owner token required'})
+            if not self.authorized(): return self.reply(401,{'error':'Sign in required'})
             query = parse_qs(urlsplit(self.path).query)
             if path == '/api/podcasts/search':
                 try: return self.reply(200,{'items':self.archive.search_podcasts(query.get('term',[''])[0]),'country':'AU','provider':'Apple Podcasts'})
@@ -472,7 +529,6 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             LOG.exception('Request failed'); self.reply(500,{'error':'Server error'})
     def do_POST(self):
-        if not self.authorized(): return self.reply(401,{'error':'Owner token required'})
         try:
             if self.headers.get('Origin'):
                 origin = urlsplit(self.headers['Origin'])
@@ -480,7 +536,26 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get('Content-Length','0'))
             if not 0 < length <= 64*1024: return self.reply(413,{'error':'JSON body required, maximum 64 KiB'})
             body = json.loads(self.rfile.read(length))
+            if not isinstance(body,dict): raise ValueError('JSON object required')
             path = urlsplit(self.path).path
+            if path == '/api/auth/login':
+                try: token=self.archive.login(body.get('password'))
+                except CatalogueRateLimited: return self.reply(429,{'error':'Too many sign-in attempts. Try again in a minute.'})
+                if token is None: return self.reply(401,{'error':'Incorrect password'})
+                return self.reply(200,{'access_token':token})
+            if not self.authorized(): return self.reply(401,{'error':'Sign in required'})
+            if path == '/api/auth/password':
+                with self.archive.auth_lock:
+                    if self.archive.password_set():
+                        try: valid=self.archive.verify_password(body.get('current_password'))
+                        except CatalogueRateLimited: return self.reply(429,{'error':'Too many sign-in attempts. Try again in a minute.'})
+                        if not valid: return self.reply(401,{'error':'Current password is incorrect'})
+                    try: token=self.archive.set_password(body.get('new_password'))
+                    except ValueError: return self.reply(400,{'error':'Choose a password with 10–256 characters'})
+                return self.reply(200,{'access_token':token})
+            if path == '/api/auth/logout':
+                self.archive.logout(self.headers.get('Authorization','')[7:])
+                return self.reply(200,{'signed_out':True})
             if path == '/api/feeds':
                 feed_id = self.archive.subscribe(body.get('title','Podcast'),body['url'],body.get('mode','future'),body.get('years',0),body.get('since'),body.get('only_if_new') is True)
                 return self.reply(201,{'id':feed_id})
@@ -540,7 +615,7 @@ class Server(ThreadingHTTPServer):
 def main():
     os.umask(0o077)
     parser=argparse.ArgumentParser()
-    parser.add_argument('command',nargs='?',default='serve',choices=['serve','backup','token','refresh'])
+    parser.add_argument('command',nargs='?',default='serve',choices=['serve','backup','token','refresh','password'])
     parser.add_argument('--config',default=os.getenv('REWINDAMP_CONFIG','/config'))
     parser.add_argument('--media',default=os.getenv('REWINDAMP_MEDIA','/podcasts'))
     parser.add_argument('--port',type=int,default=8080)
@@ -548,7 +623,16 @@ def main():
     args=parser.parse_args()
     logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
     archive=Archive(args.config,args.media)
-    if args.command=='token': print(archive.token);return
+    if args.command=='token':
+        if archive.password_set(): print('Password sign-in is configured. Reset it locally with: python server.py password')
+        else: print(archive.token)
+        return
+    if args.command=='password':
+        password=getpass.getpass('New owner password (10+ characters): ')
+        if password!=getpass.getpass('Confirm password: '): raise SystemExit('Passwords did not match; unchanged')
+        try:archive.set_password(password)
+        except ValueError as exc:raise SystemExit(str(exc))
+        print('Password saved. Sign in again on your devices.');return
     if args.command=='backup': print(archive.backup(args.full,args.destination));return
     archive.seed()
     if args.command=='refresh':

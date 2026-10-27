@@ -13,6 +13,11 @@ import javax.crypto.spec.GCMParameterSpec;
 final class PodcastApi {
     final String server,token;
     PodcastApi(String server,String token){this.server=JellyfinApi.normalizeServer(server);this.token=token.trim();}
+    static PodcastApi login(String server,String password)throws Exception{
+        PodcastApi anonymous=new PodcastApi(server,"");
+        JSONObject result=anonymous.request("/api/auth/login",new JSONObject().put("password",password));
+        return new PodcastApi(anonymous.server,result.getString("access_token"));
+    }
     String authorization(){return "Bearer "+token;}
     JSONObject request(String path,JSONObject body)throws Exception{
         HttpURLConnection c=(HttpURLConnection)new URL(server+path).openConnection();

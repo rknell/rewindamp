@@ -56,7 +56,7 @@ final class PodcastLibrary {
     androidx.media3.datasource.DataSource.Factory source(){return new CacheDataSource.Factory().setCache(cache).setCacheWriteDataSinkFactory(null).setUpstreamDataSourceFactory(new DefaultDataSource.Factory(context,http())).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR);}
     synchronized JSONArray feeds()throws Exception{
         try{JSONObject value=api.request("/api/feeds",null);store.write("podcast-feeds",value);return value.getJSONArray("items");}
-        catch(Exception e){JSONArray cached=store.read("podcast-feeds").optJSONArray("items");if(cached!=null)return cached;throw e;}
+        catch(Exception e){if(e.getMessage()!=null&&e.getMessage().contains("HTTP 401"))throw e;JSONArray cached=store.read("podcast-feeds").optJSONArray("items");if(cached!=null)return cached;throw e;}
     }
     List<JSONObject> episodes(String feed,boolean inbox,int offset)throws Exception{
         String path="/api/episodes?limit=100&offset="+offset+"&unplayed="+inbox+(feed==null?"":"&feed_id="+Uri.encode(feed));

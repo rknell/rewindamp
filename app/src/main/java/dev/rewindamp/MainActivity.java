@@ -413,14 +413,14 @@ public final class MainActivity extends Activity {
     }
     void settings(){
         String[] choices=demo?new String[]{"Connect to Jellyfin","About Rewindamp"}:new String[]{"Playback transitions","Downloads","Pause downloads","Resume downloads","Sync favourites and play history","Sign out","About Rewindamp"};
-        new AlertDialog.Builder(this).setTitle("Rewindamp 0.4.1").setItems(choices,(d,i)->{
+        new AlertDialog.Builder(this).setTitle("Rewindamp 0.4.2").setItems(choices,(d,i)->{
             if(demo){if(i==0){demo=false;loginScreen();}else about();return;}
             switch(i){case 0->TransitionSettings.show(this);case 1->navigate("Offline");case 2->{offline.paused(true);say("Downloads paused");}case 3->{offline.paused(false);say("Downloads resumed");}
                 case 4->{say("Syncing…");io.execute(()->{new PlaybackReporter(api,store).sync();handler.post(()->say("Sync attempted · pending changes retry automatically"));});}
                 case 5->new AlertDialog.Builder(this).setTitle("Sign out?").setMessage("Playback and downloads stop. Saved queues and downloads stay private to this account on the phone.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(dd,w)->signOut()).show();default->about();}
         }).setNegativeButton("Close",null).show();
     }
-    void about(){new AlertDialog.Builder(this).setTitle("Rewindamp 0.4.1").setMessage("Classic controls. Your Jellyfin music.\n\nTap tracks to append. Clear only in Queue.\nHold ≡ to drag playlist or queue entries. Long-press a track to select several.\n\n10-band EQ with automatic headroom. The spectrum follows decoded audio; no microphone permission.\n\nAndroid Auto requires sign-in on your phone. For a sideloaded build, enable unknown sources in Android Auto developer settings.\n\nIndependent app; not affiliated with Winamp or Jellyfin.").setPositiveButton("Close",null).show();}
+    void about(){new AlertDialog.Builder(this).setTitle("Rewindamp 0.4.2").setMessage("Classic controls. Your Jellyfin music.\n\nTap tracks to append. Clear only in Queue.\nHold ≡ to drag playlist or queue entries. Long-press a track to select several.\n\n10-band EQ with automatic headroom. The spectrum follows decoded audio; no microphone permission.\n\nAndroid Auto requires sign-in on your phone. For a sideloaded build, enable unknown sources in Android Auto developer settings.\n\nIndependent app; not affiliated with Winamp or Jellyfin.").setPositiveButton("Close",null).show();}
     void signOut(){
         generation++;busy=false;JellyfinApi previous=api;if(player!=null)player.pause();if(controllerFuture!=null){MediaController.releaseFuture(controllerFuture);controllerFuture=null;}player=null;
         stopService(new Intent(this,PlaybackService.class));OfflineLibrary.pause(this);new androidx.media3.exoplayer.scheduler.PlatformScheduler(this,42).cancel();SessionStore.clear(this);browseHistory.clear();previousBrowseRows=null;previousBrowse=null;api=null;offline=null;store=null;undo=null;pendingQueue.clear();shown.clear();parent=null;section="Tracks";query="";loginScreen();

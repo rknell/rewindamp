@@ -39,6 +39,24 @@ public class PodcastIntegrationTest {
         if(value.equals(root.getContentDescription()))return root;
         if(root instanceof android.view.ViewGroup group)for(int i=0;i<group.getChildCount();i++){var match=described(group.getChildAt(i),value);if(match!=null)return match;}return null;
     }
+    android.view.View hint(android.view.View root,String value){
+        if(root instanceof android.widget.EditText field&&value.contentEquals(field.getHint()))return root;
+        if(root instanceof android.view.ViewGroup group)for(int i=0;i<group.getChildCount();i++){var match=hint(group.getChildAt(i),value);if(match!=null)return match;}return null;
+    }
+    @Test public void signsInWithPasswordAndStoresOnlyEncryptedSession()throws Exception{
+        var instrumentation=InstrumentationRegistry.getInstrumentation();Context context=instrumentation.getTargetContext();
+        context.stopService(new Intent(context,PodcastPlaybackService.class));
+        // A saved bootstrap credential must lead back to password sign-in after migration.
+        PodcastApi.save(context,new PodcastApi("http://10.0.2.2:18099","isolated-podcast-fixture-token-00000001"));
+        android.app.Activity activity=instrumentation.startActivitySync(new Intent(context,PodcastActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        waitFor(()->{boolean[] ready={false};instrumentation.runOnMainSync(()->ready[0]=hint(activity.getWindow().getDecorView(),"Owner password")!=null);return ready[0];});
+        instrumentation.runOnMainSync(()->{((android.widget.EditText)hint(activity.getWindow().getDecorView(),"https://podcasts.example.com")).setText("http://10.0.2.2:18099");((android.widget.EditText)hint(activity.getWindow().getDecorView(),"Owner password")).setText("isolated memorable fixture password");find(activity.getWindow().getDecorView(),"CONNECT").performClick();});
+        waitFor(()->{PodcastApi saved=PodcastApi.load(context);return saved!=null&&saved.server.endsWith(":18099");});
+        PodcastApi saved=PodcastApi.load(context);assertNotEquals("isolated memorable fixture password",saved.token);
+        assertEquals(1,saved.request("/api/feeds",null).getJSONArray("items").length());
+        String encrypted=context.getSharedPreferences("podcast-session",0).getString("data","");assertFalse(encrypted.contains(saved.token));assertFalse(encrypted.contains("isolated memorable fixture password"));
+        instrumentation.runOnMainSync(()->{activity.finish();context.stopService(new Intent(context,PodcastPlaybackService.class));});
+    }
     @Test public void searchesCatalogueAndSubscribesWithFuturePass()throws Exception{
         var instrumentation=InstrumentationRegistry.getInstrumentation();Context context=instrumentation.getTargetContext();
         PodcastApi api=new PodcastApi("http://10.0.2.2:18097","isolated-podcast-fixture-token-00000001");PodcastApi.save(context,api);

@@ -2,7 +2,7 @@
 
 An independent, self-hosted podcast archive and listening-history service, paired with
 Rewindamp for Android. Classic listening on modern devices. No Jellyfin dependency,
-account credentials, cloud subscription or third-party Python packages are required.
+external accounts, cloud subscription or third-party Python packages are required.
 
 This first version serves podcasts. Music/video scanning, transcoding, multi-user accounts
 and an Android TV client are future work. Jellyfin continues to serve the existing music library.
@@ -48,29 +48,38 @@ certificate request. Configure DNS before recreating SWAG for another hostname.
 
 ## Connect the app or browser
 
-The server creates a private, randomly generated owner token on first start. Retrieve it
-locally when connecting a device:
+Sign in with a memorable owner password on the web and Android. There is one shared owner
+account; no username or separate family accounts are required in this version.
+
+On first setup, either use the website's **Set password** form with the existing owner token
+once, or set your password directly on the host (input is hidden):
 
 ```sh
-docker compose exec rewindamp-server python server.py token
+docker compose exec rewindamp-server python server.py password
 ```
 
-Treat that output like a password: do not commit it, paste it into an issue, put it in a
-URL or bundle it into an APK. The browser asks for the token and keeps it in memory until
-the tab closes or disconnects. Android stores its connection encrypted with Android Keystore.
-All API and audio requests use an Authorization header; only the static login UI and health
-endpoint are public. Use HTTPS except on a trusted local test network.
+The command asks you to enter and confirm a password of 10–256 characters. It also works
+as local password recovery if you forget it. You do not need to restart the service.
+The web setup token can be retrieved before setup with `python server.py token` inside the
+container. First-time setup never accepts an unauthenticated visitor as the owner.
 
-In Android, select **Podcasts** in the library menu, or **Podcasts → Connect podcast server**
-from the connection screen. Podcasts work without a Jellyfin login. Music and podcast queues,
-credentials, phone downloads and listening history are separate. Rewindamp uses the clean
-Android application ID `dev.rewindamp`; old Jellyamp installs remain separate.
+Once a password is set, the old owner token stops granting API access. Sign in with your
+password on the website and install Android 0.4.2 or later for password sign-in. Existing
+subscriptions, listening history and phone storage remain in place. Passwords are salted
+and hashed using scrypt; neither plaintext passwords nor raw session tokens are stored in
+the server database. Sessions expire after 30 days, and sign-in attempts are rate-limited.
 
-This is a **single-owner** server. Every connected device shares the same listening history
-and owner permissions. It does not offer separate family/user accounts in this version.
-Disconnecting a phone removes its connection and stops its services, while preserving private
-saved data for that server. To revoke all connected devices, stop the server, replace
-`owner-token` with a new random value of at least 32 characters, then start and reconnect.
+Use **PASSWORD** in the web library to change your password. It requires the current password
+and signs out other sessions. **SIGN OUT** revokes that browser session. The local password
+command also revokes existing sessions. Use HTTPS outside a trusted test network. Browser
+sessions stay in tab memory; Android stores only the session token encrypted by Keystore,
+never your password. Authentication is always in headers, never media URLs or APK assets.
+
+In Android, select **Podcasts** in the library menu or connect from the login screen without
+a Jellyfin account. Music and podcast queues, credentials, phone downloads and history are
+separate. Rewindamp uses the clean application ID `dev.rewindamp`; older Jellyamp installs
+remain separate. Phone disconnect stops services and removes its saved connection while
+retaining app-private downloads for that server.
 
 ## Find and add podcasts in Android
 
@@ -193,7 +202,8 @@ then copy its `config/` files and `podcasts/` tree into new empty persistent mou
 Preserve directory ownership, configure the mounts, and start the service. Do not extract over
 a running database or replace existing media without first preserving the current data.
 Database episode paths are relative, so restoring into a different media mount works.
-Restoring preserves the owner token: rotate it if the backup has been exposed.
+Restoring also restores authentication state. Run the local password command after recovery
+to revoke restored sessions, especially if a backup has been exposed.
 
 For an existing external backup system, include both persistent roots and use the SQLite
 online snapshots (or stop the service) instead of copying only an actively written SQLite file.
@@ -207,10 +217,14 @@ nearest-neighbour exports of that master to retain the pixel-art edges.
 
 ## API and verification
 
-Bearer owner token is required for all `/api/` routes. There are no tokens in media URLs,
+A bearer session token is required for library/media API routes; auth status and password login are public. There are no tokens in media URLs,
 cross-origin API access or public file listings.
 
-- `GET /health`, `GET /api/feeds`
+- `GET /health`, `GET /api/auth/status` (public setup status), `GET /api/feeds`.
+- `POST /api/auth/login`: password → 30-day session access token.
+- `POST /api/auth/password`: authenticated initial setup or password change (`new_password`,
+  plus `current_password` after setup); revokes other sessions.
+- `POST /api/auth/logout`: revokes the current session.
 - `GET /api/podcasts/search?term=…`: authenticated Apple Podcasts discovery (AU, ten results).
 - `POST /api/feeds`: `url`, `title`, `mode`, `years`, optional Unix-seconds `since`;
   `only_if_new=true` preserves an existing subscription instead of changing its pass.
