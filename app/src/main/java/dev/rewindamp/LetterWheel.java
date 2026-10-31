@@ -48,7 +48,7 @@ final class LetterWheel extends View {
     }
     @Override protected void onDraw(Canvas canvas){
         super.onDraw(canvas);float d=getResources().getDisplayMetrics().density,w=getWidth(),h=getHeight(),cy=h/2;
-        float left=9*d,right=w-9*d,top=Math.max(30*d,cy-112*d),bottom=Math.min(h-20*d,cy+112*d),radius=(bottom-top)/2;
+        float left=9*d,right=w-9*d,top=12*d,bottom=h-12*d,radius=(bottom-top)/2;
         if(radius<=0)return;
         // Recessed housing and axle caps frame a vertically rotating metal drum.
         paint.setColor(0xFF080A0E);canvas.drawRoundRect(left-4*d,top-7*d,right+4*d,bottom+7*d,6*d,6*d,paint);
@@ -76,7 +76,6 @@ final class LetterWheel extends View {
         paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(d);paint.setColor(0xFF6B7E87);canvas.drawRoundRect(left-2*d,cy-18*d,right+2*d,cy+18*d,3*d,3*d,paint);paint.setStyle(Paint.Style.FILL);
         paint.setColor(Retro.GREEN);paint.setTextSize(25*d);canvas.drawText(letters.isEmpty()?"–":letters.get(selected),w/2,cy+9*d,paint);
         paint.setColor(Retro.GOLD);Path pointer=new Path();pointer.moveTo(2*d,cy-5*d);pointer.lineTo(8*d,cy);pointer.lineTo(2*d,cy+5*d);pointer.close();canvas.drawPath(pointer,paint);
-        paint.setTextSize(8*d);paint.setColor(Retro.GOLD);canvas.drawText("LETTER",w/2,top-15*d,paint);
         // Machined housing screws.
         for(float y:new float[]{top-9*d,bottom+10*d})for(float x:new float[]{5*d,w-5*d}){
             paint.setColor(0xFF7D8B94);canvas.drawCircle(x,y,2*d,paint);paint.setColor(0xFF161C24);canvas.drawLine(x-d,y,x+d,y,paint);

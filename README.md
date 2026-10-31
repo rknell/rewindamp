@@ -43,9 +43,9 @@ Android stores an encrypted session token rather than the password. Searches use
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Local development builds are **0.4.8**.
-Music and podcast decks share a bottom Music / Podcasts bar, including their connection
-screens. Focused search screens use Back to return to the library. Switching tabs leaves playback alone; starting the other kind of audio
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.9**.
+Music and podcast decks share a horizontal metal destination wheel for Music / Podcasts /
+Queue, including their connection screens. Swipe it left or right, or tap either side. Focused search screens use Back to return to the library. Switching tabs leaves playback alone; starting the other kind of audio
 uses Android audio focus to pause the first player.
 
 The podcast header has a Settings cog. The single transport row is Previous episode,
@@ -107,11 +107,11 @@ explicit action in the Queue view, so browsing for the next song does not wipe y
 
 - **Tap a library track to append it immediately.** The first entry starts playing;
   subsequent taps keep the current song and position. Adding to a paused queue leaves it paused.
-- **ADD ALL** appends the loaded tracks, album or playlist. The entire library is reachable
+- **ADD ALL** sits at the very end of the track list and appends the complete view. The entire library is reachable
   in one load, with no pagination or further fetches while scrolling. Only visible rows are
   drawn, so large libraries stay light. Search results and playlist entries also load in full.
 - **Turn the metal letter wheel** on the right to jump immediately to a letter, then scroll
-  the list on the left to choose a track. The knurled drum has a fixed pointer, green letter
+  the list on the left to choose a track. The full-height knurled drum has a fixed pointer, green letter
   window and tactile detents. Swipe up for later letters and down for earlier ones, or tap
   above/below the window for one step. It skips letters absent from the current collection
   and follows the first visible row when you scroll the list. Tracks use title initials;
@@ -124,9 +124,11 @@ explicit action in the Queue view, so browsing for the next song does not wipe y
 - **Previous/Next** are dimmed and disabled when there is no track in that direction, including
   empty and single-track queues. Shuffle uses its actual play order; Repeat All permits wrapping.
   Previous skips to the previous track when available.
-- **QUEUE** is always accessible. Tap a queue entry to jump to it. Hold its **≡** handle
-  and drag it onto another entry to reorder. **+** also offers play next, play now while
-  retaining the queue, and move/remove actions.
+- **Queue is its own destination** on the bottom horizontal wheel, beside Podcasts.
+  Switch back to Music to restore the same library, album or search result and exact
+  scroll position. The remembered location survives screen recreation while in Queue.
+  Tap a queue entry to jump to it; hold its **≡** handle and drag to reorder. Hold a track
+  for play-next, play-now, playlist, download, favourite and move/remove actions.
 - **CLEAR QUEUE** exists only in Queue. Clear/removals have **UNDO**. Undo reinserts the
   removed entries and retains tracks you have added since the removal.
 - The queue, current index, playback position, shuffle/repeat and volume are saved in
@@ -151,8 +153,20 @@ screen recreation; lists reload only when needed, including after playlist edits
 Artwork appears in the list and player and is cached for offline use and media notifications.
 Missing covers use a small placeholder.
 
+The library panel has one control row below its header, followed immediately by tracks.
+The track count appears in the status bar until another message replaces it. The normal
+view has no selection toggle, reload button or per-track plus buttons. Playlist creation,
+rename/duplicate and whole-view phone downloads are in the library's **⋮** menu.
+
+Tracks and artist lists share an app-private, server/user-scoped metadata cache. Later
+launches and view changes show that saved collection immediately, including saved empty
+collections, while refreshing silently in the background. Refresh keeps the visible
+track and its pixel offset even if earlier entries have changed. Pull down at the top
+of the list for an explicit refresh; saved rows remain usable if the server is offline.
+Pulling the letter wheel only turns the wheel.
+
 Create private playlists, rename them, duplicate them, add multiple tracks, drag to reorder,
-and remove entries with undo. Hold a track or tap **SEL** for multi-selection. Bulk actions
+and remove entries with undo. Hold a track and choose **Select multiple tracks** for multi-selection. Bulk actions
 include queueing, adding to a playlist, downloading and removing queue/playlist entries.
 Edits sync immediately and use the Jellyfin user's existing permissions. Exact playlist-entry
 IDs distinguish entries; Jellyfin versions that deduplicate additions retain that behavior.
@@ -166,7 +180,8 @@ above the keyboard, with results in the scrollable area below. Results update af
 including contributing artists. Title matches appear first, then tracks by matching artists,
 without duplicate tracks. Both streams load completely and are deduplicated. Tap several results to append them without closing the keyboard or interrupting
 the current song. **Done** or the keyboard's Search key dismisses the keyboard to expose more results.
-**‹ BACK** returns to the previous library/playlist location; **QUEUE** opens the existing queue.
+**‹ BACK** returns to the previous library/playlist location; the bottom wheel opens Queue
+and returns to the same search and scroll position.
 
 ## Add music through Mixarr
 
@@ -266,10 +281,10 @@ can consume more battery than hardware-offloaded playback. EQ can be collapsed w
 
 ## Offline music
 
-Open an album/playlist and tap **SAVE ↓**, use a track's **+ → Download**, or select several
-tracks. Downloads use the original files permitted by your Jellyfin user's download policy.
+Open an album/playlist and choose **⋮ → Download this view to phone**, hold a track and
+choose **Download for offline**, or select several tracks from its long-press menu. Downloads use the original files permitted by your Jellyfin user's download policy.
 Two files download concurrently, with progress and failure/retry status in **Offline** and an
-Android notification. **SET** pauses/resumes downloads. Failed files can be retried from **+**.
+Android notification. **SET** pauses/resumes downloads. Hold a failed track to retry it.
 Android may ask for notification permission; files stay in private app storage.
 
 Completed downloads are preferred automatically. Queued remote entries are upgraded as their
@@ -287,7 +302,7 @@ local copies explicitly.
 
 ## Favourites and listening history
 
-Use a track's **+** menu to toggle its Jellyfin favourite. Changes are queued locally when
+Hold a track to open its actions and toggle its Jellyfin favourite. Changes are queued locally when
 necessary and retried against Jellyfin. Playback start/progress/stop events are sent from the
 service, including when the screen is closed. An account-scoped durable outbox retries network
 failures, including offline listening, when connected again. **SET → Sync favourites and play
@@ -355,7 +370,10 @@ updates during a fade, gapless boundaries and the optional separate-track pause.
 225-track HTTP fixture checks a complete collection request, bounded visible rows, cached
 connection retry, ordering without duplicates and restoring a deep scroll position after
 search. A continuous letter-wheel gesture jumps straight to S without another network
-request; ordinary list scrolling updates the selected letter. Transport checks
+request; ordinary list scrolling updates the selected letter. Library UX checks cover cached
+launches (including empty catalogues), refresh failure and inserted rows, private account
+scopes, pull gestures, footer actions, the horizontal destination wheel and restoring exact
+search/queue positions through activity recreation. Transport checks
 cover queue edges, clearing, shuffle, Repeat All and skipping back from a later track.
 A deep album-navigation check verifies exact row/pixel restoration through search and both
 Back controls, with saved collections reused instead of fetched again. A rendered-title check

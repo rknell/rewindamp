@@ -50,21 +50,13 @@ final class Retro {
         }
         void rail(Canvas c,float left,float right,float h,float d){if(right<left)return;p.setColor(0xFF8F8051);c.drawRect(left,h/2-3*d,right,h/2+3*d,p);p.setColor(0xFFF6EFC2);c.drawRect(left,h/2-3*d,right,h/2-1*d,p);p.setColor(0xFFD4C583);c.drawRect(left,h/2,right,h/2+d,p);}
     }
-    static android.widget.LinearLayout navigationBar(android.app.Activity activity,boolean podcasts){
-        android.widget.LinearLayout bar=new android.widget.LinearLayout(activity);
-        bar.setBackground(bevel(PANEL,false));
-        float density=activity.getResources().getDisplayMetrics().density;
-        for(boolean tab:new boolean[]{false,true}){
-            MetalButton button=new MetalButton(activity,tab?"PODCASTS":"MUSIC");button.setSelected(tab==podcasts);
-            button.setTextColor(tab==podcasts?0xFF0C5615:0xFF283A46);
-            button.setContentDescription((tab?"Podcasts":"Music")+(tab==podcasts?", selected":""));
-            button.setOnClickListener(view->{if(tab==podcasts){if(tab&&activity instanceof PodcastDiscoveryActivity)activity.finish();return;}
-                if(tab)activity.startActivity(new android.content.Intent(activity,PodcastActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));
-                else{activity.startActivity(new android.content.Intent(activity,MainActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP|android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));activity.finish();}
-            });
-            bar.addView(button,new android.widget.LinearLayout.LayoutParams(0,Math.round(48*density),1));
-        }
-        return bar;
+    static DestinationWheel navigationBar(android.app.Activity activity,boolean podcasts){
+        int selected=podcasts?1:activity instanceof MainActivity main&&main.queue()?2:0;
+        return new DestinationWheel(activity,selected,index->{
+            if(activity instanceof MainActivity main){if(index==0){main.showMusic();return;}if(index==2){main.showQueue();return;}}
+            if(index==1){if(podcasts)return;activity.startActivity(new android.content.Intent(activity,PodcastActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));}
+            else{activity.startActivity(new android.content.Intent(activity,MainActivity.class).putExtra("destination",index==2?"queue":"music").addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP|android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));activity.finish();}
+        });
     }
     static MetalButton settingsButton(Context context,Runnable action){
         MetalButton button=new MetalButton(context,"").icon("settings");

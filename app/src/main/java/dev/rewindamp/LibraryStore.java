@@ -34,6 +34,7 @@ final class LibraryStore {
     }
     void tracks(String key,List<Track> tracks){try{JSONArray array=new JSONArray();for(Track t:tracks)array.put(t.json());write(key,new JSONObject().put("Items",array));}catch(Exception ignored){}}
     List<Track> tracks(String key){try{return JellyfinApi.parse(read(key));}catch(Exception ignored){return new ArrayList<>();}}
+    List<Track> cachedTracks(String key){JSONObject saved=read(key);if(saved.optJSONArray("Items")==null)return null;try{return JellyfinApi.parse(saved);}catch(Exception ignored){return null;}}
     File artFile(Track track){return new File(directory,"art-"+hash(track.imageId+":"+track.imageTag)+".jpg");}
     byte[] artwork(Track track){try{return java.nio.file.Files.readAllBytes(artFile(track).toPath());}catch(Exception ignored){return new byte[0];}}
     void artwork(Track track,byte[] bytes){if(bytes.length==0)return;try{java.nio.file.Files.write(artFile(track).toPath(),bytes);}catch(Exception ignored){}}

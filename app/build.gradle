@@ -1,13 +1,14 @@
 plugins { id 'com.android.application' }
 android {
     namespace 'dev.rewindamp'
+    buildFeatures { buildConfig true }
     compileSdk 35
     defaultConfig {
         applicationId 'dev.rewindamp'
         minSdk 26
         targetSdk 35
-        versionCode 19
-        versionName '0.4.8'
+        versionCode 20
+        versionName '0.4.9'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     compileOptions { coreLibraryDesugaringEnabled true; sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }

@@ -47,17 +47,23 @@ public final class MainActivity extends Activity {
     private java.util.concurrent.Future<?> browseTask;
     private LinearLayout root,tools,equalizer,eqControls;
     private ListView resultScroll;
-    private LinearLayout resultsHost;
+    private PullRefreshLayout resultsHost;
+    private DestinationWheel destinationWheel;
+    private Button browseBack;
+    private BrowsePage musicPage;
+    private boolean musicSearch;
+    private int queueScroll,queueTop;
+    private String displayedKey="";
     private LetterWheel letterWheel;
     private final List<String> letters=new ArrayList<>();
     private final List<Integer> letterPositions=new ArrayList<>();
     private BaseAdapter resultAdapter;
     private final List<Integer> visibleRows=new ArrayList<>();
-    private boolean loadingPage=false,pageFailed=false;
+    private boolean loadingPage=false,pageFailed=false,hasAudioRows=false;
     private TextView title,artist,status,count,audioInfo;
     private Retro.Digits clock;
     private Retro.Spectrum spectrum;
-    private Button play,previous,next,shuffle,repeat,queueButton,sectionButton,undoButton,eqButton;
+    private Button play,previous,next,shuffle,repeat,sectionButton,undoButton,eqButton;
     private ImageView cover;
     private SeekBar seek,volume;
     private EditText search;
@@ -74,26 +80,30 @@ public final class MainActivity extends Activity {
     private int generation=0;
     private boolean demo=false,busy=false,destroyed=false,seeking=false,selecting=false,eqExpanded=true,morePages=false,remainingTime=false;
     private Runnable undo;
-    private long undoTime;
+    private long undoTime,statusRevision;
     private final Runnable ticker=new Runnable(){@Override public void run(){if(!destroyed){updatePlayer();updateDownloads();handler.postDelayed(this,500);}}};
 
     @Override public void onCreate(Bundle state){
         super.onCreate(state);DspSettings.load(this);
         if(state!=null){section=state.getString("section","Tracks");query=state.getString("query","");parent=state.getString("parent");parentType=state.getString("parentType","");parentName=state.getString("parentName","");searchScreen=state.getBoolean("searchScreen");
             restoreScroll=state.getInt("scroll",0);restoreTop=state.getInt("scrollTop",0);
+            if(state.containsKey("musicPage")){musicPage=new BrowsePage(readBrowse(state.getBundle("musicPage")),null,false);musicSearch=state.getBoolean("musicSearch");}queueScroll=state.getInt("queueScroll");queueTop=state.getInt("queueTop");
             ArrayList<Bundle> history=state.getParcelableArrayList("browseHistory");if(history!=null)for(Bundle page:history)browseHistory.addLast(new BrowsePage(readBrowse(page),null,false));
-            if(searchScreen)previousBrowse=new BrowseState(state.getString("browseSection","Tracks"),state.getString("browseQuery",""),state.getString("browseParent"),state.getString("browseType",""),state.getString("browseName",""),state.getInt("browseScroll"),state.getInt("browseTop"));}
+            if(state.containsKey("browseSection"))previousBrowse=new BrowseState(state.getString("browseSection","Tracks"),state.getString("browseQuery",""),state.getString("browseParent"),state.getString("browseType",""),state.getString("browseName",""),state.getInt("browseScroll"),state.getInt("browseTop"));}
         remainingTime=getPreferences(0).getBoolean("remainingTime",false);eqExpanded=getPreferences(0).getBoolean("eqExpanded",true);api=SessionStore.load(this);
         if(api==null)loginScreen();else{offline=OfflineLibrary.get(this,api);store=offline.store;if(searchScreen)searchLayout(false);else mainScreen();connectPlayer();load(false);}
-        handleVoiceSearch(getIntent());handler.post(ticker);
+        handleVoiceSearch(getIntent());handleDestination(getIntent());handler.post(ticker);
     }
     private void handleVoiceSearch(Intent intent){
         if(intent!=null&&android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH.equals(intent.getAction())){
             String term=intent.getStringExtra(android.app.SearchManager.QUERY);if(term!=null&&!term.isBlank()&&api!=null){openSearch(term);say("Search results · tap to add to queue");}
         }
     }
-    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleVoiceSearch(intent);}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleVoiceSearch(intent);handleDestination(intent);}
+    private void handleDestination(Intent intent){if(intent==null)return;String destination=intent.getStringExtra("destination");if("queue".equals(destination))showQueue();else if("music".equals(destination))showMusic();intent.removeExtra("destination");}
+    @Override protected void onResume(){super.onResume();if(destinationWheel!=null)destinationWheel.select(queue()?2:0);}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("section",section);state.putString("query",query);state.putString("parent",parent);state.putString("parentType",parentType);state.putString("parentName",parentName);state.putBoolean("searchScreen",searchScreen);
+        if(musicPage!=null){state.putBundle("musicPage",saveBrowse(musicPage.state()));state.putBoolean("musicSearch",musicSearch);}state.putInt("queueScroll",queueScroll);state.putInt("queueTop",queueTop);
         BrowseState current=captureBrowse();state.putInt("scroll",current.scroll());state.putInt("scrollTop",current.top());
         ArrayList<Bundle> history=new ArrayList<>();for(BrowsePage page:browseHistory)history.add(saveBrowse(page.state()));state.putParcelableArrayList("browseHistory",history);
         if(previousBrowse!=null){state.putString("browseSection",previousBrowse.section());state.putString("browseQuery",previousBrowse.query());state.putString("browseParent",previousBrowse.parent());state.putString("browseType",previousBrowse.parentType());state.putString("browseName",previousBrowse.parentName());state.putInt("browseScroll",previousBrowse.scroll());state.putInt("browseTop",previousBrowse.top());}}
@@ -119,7 +129,7 @@ public final class MainActivity extends Activity {
     }
     EditText field(String hint,boolean password){EditText e=new EditText(this);e.setTextColor(Retro.GREEN);e.setHintTextColor(Retro.MUTED);e.setTextSize(13);e.setSingleLine(true);e.setTypeface(Retro.MONO);e.setPadding(dp(9),dp(5),dp(9),dp(5));e.setBackground(Retro.bevel(Retro.LCD,true));e.setHint(hint);e.setInputType(password?InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD:InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);if(password)e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);return e;}
     void loginScreen(){
-        searchScreen=false;previousBrowse=null;previousBrowseRows=null;browseHistory.clear();base();ScrollView scroll=new ScrollView(this);LinearLayout box=column();scroll.addView(box);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));root.addView(Retro.navigationBar(this,false));rail(box,"REWINDAMP / CONNECT");gap(box,24);
+        searchScreen=false;previousBrowse=null;previousBrowseRows=null;browseHistory.clear();base();ScrollView scroll=new ScrollView(this);LinearLayout box=column();scroll.addView(box);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));addDestinationWheel();rail(box,"REWINDAMP / CONNECT");gap(box,24);
         box.addView(text("REWINDAMP",34,Retro.GREEN));box.addView(text("YOUR MUSIC. OLD SCHOOL.",12,Retro.MUTED));gap(box,24);
         LinearLayout form=column();panel(form);form.setPadding(dp(16),dp(12),dp(16),dp(12));box.addView(form);rail(form,"JELLYFIN SERVER");gap(form,12);
         EditText server=field("https://jellyfin.example.com",false);server.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);form.addView(server,new LinearLayout.LayoutParams(-1,dp(52)));gap(form,12);
@@ -156,15 +166,45 @@ public final class MainActivity extends Activity {
         weighted(controls,transport("eject",this::chooseSection),44);shuffle=button("SHUF",()->{if(player!=null)player.setShuffleModeEnabled(!player.getShuffleModeEnabled());});controls.addView(shuffle,new LinearLayout.LayoutParams(dp(49),dp(44)));
         repeat=button("REP",()->{if(player!=null)player.setRepeatMode((player.getRepeatMode()+1)%3);});controls.addView(repeat,new LinearLayout.LayoutParams(dp(42),dp(44)));deck.addView(controls);gap(deckHost,5);
         equalizer=column();panel(equalizer);deckHost.addView(equalizer);rail(equalizer,"REWINDAMP EQUALIZER");buildEqualizer();equalizer.setVisibility(eqExpanded?View.VISIBLE:View.GONE);gap(deckHost,5);
-        LinearLayout browser=column();panel(browser);libraryHost.addView(browser,new LinearLayout.LayoutParams(-1,0,1));rail(browser,"MUSIC LIBRARY");
-        LinearLayout navigation=row();sectionButton=button(section.toUpperCase(Locale.ROOT)+" ▾",this::chooseSection);navigation.addView(sectionButton,new LinearLayout.LayoutParams(0,dp(42),1));
-        queueButton=button("QUEUE",()->navigate("Queue"));navigation.addView(queueButton,new LinearLayout.LayoutParams(dp(96),dp(42)));navigation.addView(button("SEL",()->{selecting=!selecting;selected.clear();render(morePages);}),new LinearLayout.LayoutParams(dp(44),dp(42)));browser.addView(navigation);
-        // Keep the browse query separate from the visible Search navigation action.
-        search=field("Search music",false);search.setText(query);
-        navigation.addView(Retro.action(this,"Search",()->openSearch("")),new LinearLayout.LayoutParams(dp(68),dp(48)));
-        count=text("",10,Retro.MUTED);count.setSingleLine(true);count.setEllipsize(TextUtils.TruncateAt.END);browser.addView(count,new LinearLayout.LayoutParams(-1,dp(22)));tools=row();browser.addView(tools,new LinearLayout.LayoutParams(-1,dp(40)));
+        LinearLayout browser=column();panel(browser);libraryHost.addView(browser,new LinearLayout.LayoutParams(-1,0,1));rail(browser,queue()?"QUEUE":"MUSIC LIBRARY");
+        LinearLayout navigation=row();browser.addView(navigation);
+        browseBack=button("‹ BACK",this::backBrowse);navigation.addView(browseBack,new LinearLayout.LayoutParams(dp(68),dp(48)));browseBack.setVisibility(View.GONE);
+        if(queue()){
+            sectionButton=null;weighted(navigation,button("SAVE AS",this::saveQueue),48);weighted(navigation,button("CLEAR QUEUE",this::clearQueue),48);
+        }else{
+            sectionButton=button(section.toUpperCase(Locale.ROOT)+" ▾",this::chooseSection);navigation.addView(sectionButton,new LinearLayout.LayoutParams(0,dp(48),1));
+            navigation.addView(Retro.action(this,"Search",()->openSearch("")),new LinearLayout.LayoutParams(dp(78),dp(48)));
+            Button menu=button("⋮",this::libraryMenu);menu.setContentDescription("Library actions");navigation.addView(menu,new LinearLayout.LayoutParams(dp(42),dp(48)));
+        }
+        search=field("Search music",false);search.setText(query);count=text("",10,Retro.MUTED);
+        tools=row();tools.setVisibility(View.GONE);browser.addView(tools,new LinearLayout.LayoutParams(-1,-2));
         buildResults();browser.addView(resultsHost,new LinearLayout.LayoutParams(-1,0,1));
-        LinearLayout footer=row();status=text(demo?"DEMO · SAMPLE LIBRARY":"READY · TAP TRACKS TO QUEUE",10,Retro.MUTED);status.setMaxLines(2);footer.addView(status,new LinearLayout.LayoutParams(0,dp(42),1));undoButton=button("UNDO",this::doUndo);footer.addView(undoButton,new LinearLayout.LayoutParams(dp(54),dp(42)));libraryHost.addView(footer);root.addView(new AcquisitionStatusView(this));root.addView(Retro.navigationBar(this,false));updatePlayer();
+        LinearLayout footer=row();status=text(demo?"DEMO · SAMPLE LIBRARY":"READY · TAP TRACKS TO QUEUE",10,Retro.MUTED);status.setMaxLines(2);footer.addView(status,new LinearLayout.LayoutParams(0,dp(42),1));undoButton=button("UNDO",this::doUndo);footer.addView(undoButton,new LinearLayout.LayoutParams(dp(54),dp(42)));libraryHost.addView(footer);root.addView(new AcquisitionStatusView(this));addDestinationWheel();updatePlayer();
+    }
+    void addDestinationWheel(){destinationWheel=Retro.navigationBar(this,false);root.addView(destinationWheel,new LinearLayout.LayoutParams(-1,dp(64)));}
+    void saveQueue(){if(demo){say("Connect to save playlists");return;}List<Track> snapshot=new ArrayList<>(shown);nameDialog("Save queue as playlist","",name->mutate(()->{api.create(name,snapshot);return null;},()->say("Playlist saved to Jellyfin")));}
+    void libraryMenu(){
+        if(demo){say("Connect to manage your music");return;}
+        List<String> actions=new ArrayList<>();if(section.equals("Playlists")&&parent==null)actions.add("New private playlist");if(playlist()){actions.add("Rename playlist");actions.add("Duplicate playlist");}if(shown.stream().anyMatch(t->t.type.equals("Audio")))actions.add("Download this view to phone");
+        if(actions.isEmpty()){say("Tap tracks to add them. Hold a track for more actions.");return;}
+        new AlertDialog.Builder(this).setTitle("Library actions").setItems(actions.toArray(new String[0]),(d,i)->{switch(actions.get(i)){
+            case "New private playlist"->nameDialog("New private playlist","",name->mutate(()->{api.create(name,List.of());return null;},()->load(false)));
+            case "Rename playlist"->{String id=parent;nameDialog("Rename playlist",parentName,name->mutate(()->{api.rename(id,name);return null;},()->{parentName=name;load(false);}));}
+            case "Duplicate playlist"->{List<Track> snapshot=new ArrayList<>(shown);nameDialog("Duplicate playlist",parentName+" copy",name->mutate(()->{api.create(name,snapshot);return null;},()->say("Private playlist copy created")));}
+            default->download(new ArrayList<>(shown));
+        }}).show();
+    }
+    void showQueue(){
+        if(queue())return;if(api==null&&!demo){if(destinationWheel!=null)destinationWheel.select(0);return;}
+        musicPage=capturePage();musicSearch=searchScreen;handler.removeCallbacks(searchDebounce);hideKeyboard();generation++;if(browseTask!=null)browseTask.cancel(true);
+        searchScreen=false;section="Queue";parent=null;query="";selecting=false;selected.clear();restoreScroll=queueScroll;restoreTop=queueTop;mainScreen();load(false);say(libraryStatus());
+    }
+    void showMusic(){
+        if(!queue()){if(destinationWheel!=null)destinationWheel.select(0);return;}
+        BrowseState queued=captureBrowse();queueScroll=queued.scroll();queueTop=queued.top();
+        BrowsePage page=musicPage;musicPage=null;if(page==null)page=new BrowsePage(new BrowseState("Tracks","",null,"","",0,0),null,false);
+        BrowseState state=page.state();section=state.section();parent=state.parent();parentType=state.parentType();parentName=state.parentName();query=state.query();searchScreen=musicSearch;selecting=false;selected.clear();
+        if(searchScreen)searchLayout(false);else mainScreen();restorePage(page);
     }
     void buildEqualizer(){
         if(eqControls!=null&&eqControls.getParent()!=null)((ViewGroup)eqControls.getParent()).removeView(eqControls);
@@ -186,8 +226,8 @@ public final class MainActivity extends Activity {
     BrowseState readBrowse(Bundle saved){return new BrowseState(saved.getString("section","Tracks"),saved.getString("query",""),saved.getString("parent"),saved.getString("type",""),saved.getString("name",""),saved.getInt("scroll"),saved.getInt("top"));}
     void restorePage(BrowsePage page){
         generation++;if(browseTask!=null)browseTask.cancel(true);loadingPage=false;pageFailed=false;selected.clear();selecting=false;
-        BrowseState state=page.state();section=state.section();query=state.query();parent=state.parent();parentType=state.parentType();parentName=state.parentName();restoreScroll=state.scroll();restoreTop=state.top();search.setText(query);
-        if(queue()||section.equals("Offline")||page.rows()==null)load(false);else{shown.clear();shown.addAll(page.rows());render(page.more());say("TAP TRACKS TO QUEUE · "+shown.size()+" ITEMS");}
+        BrowseState state=page.state();section=state.section();query=state.query();parent=state.parent();parentType=state.parentType();parentName=state.parentName();restoreScroll=state.scroll();restoreTop=state.top();if(!search.getText().toString().equals(query))search.setText(query);
+        if(queue()||section.equals("Offline")||page.rows()==null)load(false);else{shown.clear();shown.addAll(page.rows());render(page.more());say(libraryStatus());}
     }
     void backBrowse(){
         if(!browseHistory.isEmpty())restorePage(browseHistory.removeLast());
@@ -196,7 +236,7 @@ public final class MainActivity extends Activity {
     void invalidateBrowseHistory(){
         List<BrowsePage> pages=new ArrayList<>(browseHistory);browseHistory.clear();for(BrowsePage page:pages)browseHistory.addLast(new BrowsePage(page.state(),null,false));previousBrowseRows=null;
     }
-    void navigate(String next){browseHistory.clear();previousBrowseRows=null;if(searchScreen){searchScreen=false;previousBrowse=null;hideKeyboard();mainScreen();}restoreScroll=0;restoreTop=0;section=next;parent=null;query="";selected.clear();selecting=false;search.setText("");load(false);}
+    void navigate(String next){if(next.equals("Queue")){showQueue();return;}if(queue())showMusic();browseHistory.clear();previousBrowseRows=null;if(searchScreen){searchScreen=false;previousBrowse=null;hideKeyboard();mainScreen();}restoreScroll=0;restoreTop=0;section=next;parent=null;query="";selected.clear();selecting=false;search.setText("");load(false);}
     void searchNow(){handler.removeCallbacks(searchDebounce);if(!searchScreen){openSearch("");return;}query=search.getText().toString().trim();selected.clear();selecting=false;parent=null;restoreScroll=0;restoreTop=0;load(false);}
     void openSearch(String initial){
         if(!searchScreen){BrowsePage page=capturePage();previousBrowse=page.state();previousBrowseRows=page.rows();previousBrowseMore=page.more();}
@@ -210,14 +250,14 @@ public final class MainActivity extends Activity {
     void searchLayout(boolean keyboard){
         base();rail(root,"REWINDAMP / MUSIC SEARCH");LinearLayout navigation=row();
         navigation.addView(Retro.action(this,"‹ BACK",this::closeSearch),new LinearLayout.LayoutParams(0,dp(48),1));
-        queueButton=button("QUEUE",()->navigate("Queue"));navigation.addView(queueButton,new LinearLayout.LayoutParams(dp(90),dp(48)));root.addView(navigation);
+        root.addView(navigation);
         TextView intro=Retro.heading(this,"Search your music","Find a track or artist in your Jellyfin library.");intro.setTag("search-intro");root.addView(intro);
         LinearLayout find=row();search=field("Track title or artist",false);search.setText(query);find.addView(search,new LinearLayout.LayoutParams(0,dp(52),1));find.addView(Retro.action(this,"Done",this::hideKeyboard),new LinearLayout.LayoutParams(dp(60),dp(52)));root.addView(find);
         search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);search.setOnEditorActionListener((v,a,event)->{searchNow();hideKeyboard();return true;});
         root.addView(Retro.action(this,"Can’t find it? Search online  ›",()->{if(demo){say("Connect to Jellyfin to add tracks with Mixarr.");return;}hideKeyboard();startActivityForResult(new Intent(this,MixarrActivity.class).putExtra("query",search.getText().toString()),309);}),new LinearLayout.LayoutParams(-1,dp(48)));
         count=text("TYPE TO SEARCH · TAP RESULTS TO QUEUE",10,Retro.MUTED);root.addView(count,new LinearLayout.LayoutParams(-1,dp(28)));tools=row();root.addView(tools,new LinearLayout.LayoutParams(-1,-2));sectionButton=null;
         buildResults();root.addView(resultsHost,new LinearLayout.LayoutParams(-1,0,1));
-        LinearLayout footer=row();status=text("Tap a result to add it to your listening queue",10,Retro.MUTED);status.setSingleLine();status.setEllipsize(TextUtils.TruncateAt.MARQUEE);status.setMarqueeRepeatLimit(-1);status.setSelected(true);footer.addView(status,new LinearLayout.LayoutParams(0,dp(40),1));undoButton=button("UNDO",this::doUndo);footer.addView(undoButton,new LinearLayout.LayoutParams(dp(54),dp(40)));root.addView(footer);
+        LinearLayout footer=row();status=text("Tap a result to add it to your listening queue",10,Retro.MUTED);status.setSingleLine();status.setEllipsize(TextUtils.TruncateAt.MARQUEE);status.setMarqueeRepeatLimit(-1);status.setSelected(true);footer.addView(status,new LinearLayout.LayoutParams(0,dp(40),1));undoButton=button("UNDO",this::doUndo);footer.addView(undoButton,new LinearLayout.LayoutParams(dp(54),dp(40)));root.addView(footer);addDestinationWheel();
         search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){generation++;if(browseTask!=null)browseTask.cancel(true);morePages=false;loadingPage=true;handler.removeCallbacks(searchDebounce);handler.postDelayed(searchDebounce,300);}public void afterTextChanged(android.text.Editable value){}});
         updatePlayer();if(keyboard){EditText input=search;input.requestFocus();input.postDelayed(()->{if(searchScreen&&search==input&&!destroyed)((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(input,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);},120);}
     }
@@ -244,7 +284,7 @@ public final class MainActivity extends Activity {
     void updatePlayer(){
         updateClock();
         if(spectrum!=null)spectrum.setPlaybackActive(!demo&&player!=null&&player.isPlaying());
-        if(queueButton==null)return;int size=player==null?pendingQueue.size():player.getMediaItemCount();queueButton.setText("QUEUE "+size);if(undoButton!=null){undoButton.setEnabled(undo!=null);undoButton.setAlpha(undo!=null?1f:.35f);}
+        if(undoButton!=null){undoButton.setEnabled(undo!=null);undoButton.setAlpha(undo!=null?1f:.35f);}
         if(previous!=null){boolean enabled=!demo&&player!=null&&player.hasPreviousMediaItem();previous.setEnabled(enabled);previous.setAlpha(enabled?1f:.35f);}
         if(next!=null){boolean enabled=!demo&&player!=null&&player.hasNextMediaItem();next.setEnabled(enabled);next.setAlpha(enabled?1f:.35f);}
         if(searchScreen||demo||player==null)return;MediaItem current=player.getCurrentMediaItem();
@@ -262,24 +302,38 @@ public final class MainActivity extends Activity {
         List<MediaItem> media=new ArrayList<>();for(Track track:tracks)if(track.type.equals("Audio"))media.add(offline.media(track));QueueStore.append(player,media);
         say((media.size()==1?"Added “"+tracks.get(0).name+"”":media.size()+" tracks added")+" · "+player.getMediaItemCount()+" queued");updatePlayer();
     }
-    void load(boolean more){
+    String browseKey(String view,String owner,String term){return "browse-all-v1:"+view+":"+owner+":"+term;}
+    String libraryStatus(){return (queue()?"QUEUE":parent!=null?parentName:section).toUpperCase(Locale.ROOT)+" · "+shown.size()+" ITEMS";}
+    void load(boolean refresh){
         if(browseTask!=null)browseTask.cancel(true);
         loadingPage=false;pageFailed=false;morePages=false;
         int request=++generation;String requestedSection=section,requestedParent=parent,requestedType=parentType,requestedQuery=query;
         if(searchScreen&&requestedQuery.isBlank()){shown.clear();render(false);return;}
-        if(section.equals("Queue")){shown.clear();if(player!=null)for(int i=0;i<player.getMediaItemCount();i++)shown.add(Track.fromMedia(player.getMediaItemAt(i)));else shown.addAll(pendingQueue);render(false);return;}
-        if(demo){shown.clear();shown.addAll(demoItems());sortLibrary();render(false);return;}
-        if(section.equals("Offline")){shown.clear();for(Track t:offline.tracks(false))if(matches(t,query))shown.add(t);sortLibrary();render(false);return;}
-        loadingPage=true;shown.clear();render(false);
-        String cacheKey="browse-all-v1:"+requestedSection+":"+requestedParent+":"+requestedQuery;say("Loading collection…");JellyfinApi requestedApi=api;LibraryStore requestedStore=store;
+        if(queue()){BrowseState position=captureBrowse();shown.clear();if(player!=null)for(int i=0;i<player.getMediaItemCount();i++)shown.add(Track.fromMedia(player.getMediaItemAt(i)));else shown.addAll(pendingQueue);if(restoreScroll<0){restoreScroll=position.scroll();restoreTop=position.top();}render(false);return;}
+        if(demo){shown.clear();shown.addAll(demoItems());sortLibrary();render(false);say(libraryStatus());return;}
+        if(section.equals("Offline")){shown.clear();for(Track t:offline.tracks(false))if(matches(t,query))shown.add(t);sortLibrary();render(false);say(libraryStatus());return;}
+        String cacheKey=browseKey(requestedSection,requestedParent,requestedQuery);boolean catalog=requestedParent==null&&requestedQuery.isBlank()&&(requestedSection.equals("Tracks")||requestedSection.equals("Artists"));
+        boolean sameView=displayedKey.equals(cacheKey);List<Track> cached=store.cachedTracks(catalog?"music-catalog-v1":cacheKey);
+        if(cached==null&&catalog){cached=store.cachedTracks(browseKey("Tracks",null,""));if(cached==null)cached=store.cachedTracks(browseKey("Artists",null,""));}
+        if(cached==null&&requestedSection.equals("Favourites")&&requestedParent==null&&requestedQuery.isBlank())cached=store.cachedTracks("favourites-local");
+        boolean saved=cached!=null,keep=sameView&&!shown.isEmpty();
+        if(!keep){shown.clear();if(saved)shown.addAll(cached);sortLibrary();}
+        displayedKey=cacheKey;loadingPage=!saved&&!keep;render(false);
+        if(refresh)say("Refreshing library…");else if(!sameView||loadingPage)say(loadingPage?"Loading collection…":libraryStatus());
+        JellyfinApi requestedApi=api;LibraryStore requestedStore=store;boolean silent=(saved||keep)&&!refresh;long expectedStatus=statusRevision;
         browseTask=(searchScreen?searchIo:io).submit(()->{try{
-            List<Track> tracks=requestedApi.browseAll(requestedSection,requestedQuery,requestedParent,requestedType);
-            if(Thread.currentThread().isInterrupted())return;
-            requestedStore.tracks(cacheKey,tracks);if(requestedSection.equals("Favourites")&&requestedParent==null&&requestedQuery.isBlank())requestedStore.tracks("favourites-local",tracks);
-            handler.post(()->{if(destroyed||request!=generation)return;loadingPage=false;shown.clear();shown.addAll(tracks);sortLibrary();render(false);say("TAP TRACKS TO QUEUE · "+shown.size()+" ITEMS");});
-        }catch(Exception ex){if(Thread.currentThread().isInterrupted())return;List<Track> cached=requestedStore.tracks(cacheKey);if(requestedSection.equals("Favourites")&&requestedQuery.isBlank())cached=requestedStore.tracks("favourites-local");List<Track> fallback=cached;
-            handler.post(()->{if(destroyed||request!=generation)return;loadingPage=false;shown.clear();shown.addAll(fallback);sortLibrary();pageFailed=true;render(false);say(fallback.isEmpty()?message(ex):"OFFLINE · CACHED LIBRARY / DOWNLOADED TRACKS PLAY");});
+            List<Track> tracks=requestedApi.browseAll(requestedSection,requestedQuery,requestedParent,requestedType);if(Thread.currentThread().isInterrupted())return;
+            requestedStore.tracks(cacheKey,tracks);if(catalog)requestedStore.tracks("music-catalog-v1",tracks);if(requestedSection.equals("Favourites")&&requestedParent==null&&requestedQuery.isBlank())requestedStore.tracks("favourites-local",tracks);
+            handler.post(()->{if(destroyed||request!=generation)return;applyRefreshedTracks(tracks,saved||keep);loadingPage=false;render(false);if(statusRevision==expectedStatus)say(libraryStatus()+(refresh?" · refreshed":""));});
+        }catch(Exception ex){if(Thread.currentThread().isInterrupted())return;
+            handler.post(()->{if(destroyed||request!=generation)return;loadingPage=false;pageFailed=!saved&&!keep;render(false);if(statusRevision==expectedStatus){if(refresh)say("Refresh failed · saved library retained");else if(!silent)say(message(ex));}});
         }});
+    }
+    void applyRefreshedTracks(List<Track> tracks,boolean keepPosition){
+        int first=resultScroll.getFirstVisiblePosition();Track anchor=first<visibleRows.size()?shown.get(visibleRows.get(first)):null;int top=resultScroll.getChildCount()==0?0:resultScroll.getChildAt(0).getTop()-resultScroll.getPaddingTop();
+        Set<String> selectedIds=new HashSet<>();for(Track track:selectedTracks())selectedIds.add(track.id);
+        shown.clear();shown.addAll(tracks);sortLibrary();selected.clear();for(int i=0;i<shown.size();i++)if(selectedIds.contains(shown.get(i).id))selected.add(i);
+        if(keepPosition&&restoreScroll<0){restoreScroll=Math.min(first,Math.max(0,shown.size()-1));restoreTop=top;if(anchor!=null)for(int i=0;i<shown.size();i++)if(shown.get(i).id.equals(anchor.id)&&shown.get(i).entryId.equals(anchor.entryId)){restoreScroll=i;break;}}
     }
     boolean alphabetical(){return !searchScreen&&parent==null&&!queue()&&!section.equals("History");}
     String alphabetName(Track track){return section.equals("Artists")||section.equals("Albums")?track.artist:track.name;}
@@ -314,41 +368,45 @@ public final class MainActivity extends Activity {
             weighted(tools,button("+ PL",()->choosePlaylist(selectedTracks())),40);weighted(tools,button("SAVE ↓",()->download(selectedTracks())),40);
             if(queue()||playlist())weighted(tools,button("REMOVE",this::removeSelected),40);
             weighted(tools,button("ALL",()->{for(int i=0;i<shown.size();i++)if(shown.get(i).type.equals("Audio"))selected.add(i);render(morePages);}),40);
-        }else{
-            if(!searchScreen&&(parent!=null||!browseHistory.isEmpty()))weighted(tools,button("‹ BACK",this::backBrowse),40);
-            if(section.equals("Playlists")&&parent==null)weighted(tools,button("NEW",()->nameDialog("New private playlist","",name->mutate(()->{api.create(name,List.of());return null;},()->load(false)))),40);
-            if(playlist()){
-                weighted(tools,button("RENAME",()->{String id=parent;nameDialog("Rename playlist",parentName,name->mutate(()->{api.rename(id,name);return null;},()->{parentName=name;load(false);}));}),40);
-                weighted(tools,button("COPY",()->{List<Track> snapshot=new ArrayList<>(shown);nameDialog("Duplicate playlist",parentName+" copy",name->mutate(()->{api.create(name,snapshot);return null;},()->say("Private playlist copy created")));}),40);
-            }
-            if(shown.stream().anyMatch(t->t.type.equals("Audio"))){
-                if(!queue())weighted(tools,button("ADD ALL",()->enqueue(new ArrayList<>(shown))),40);
-                if(!queue())weighted(tools,button("SAVE ↓",()->download(new ArrayList<>(shown))),40);
-            }
-            if(queue()){
-                weighted(tools,button("SAVE AS",()->{List<Track> snapshot=new ArrayList<>(shown);nameDialog("Save queue as playlist","",name->mutate(()->{api.create(name,snapshot);return null;},()->say("Playlist saved to Jellyfin")));}),40);
-                weighted(tools,button("CLEAR QUEUE",this::clearQueue),40);
-            }
-            weighted(tools,button("↻",()->load(false)),40);
+            weighted(tools,button("DONE",()->{selecting=false;selected.clear();render(false);}),40);
         }
-        if(searchScreen&&!selecting)tools.removeAllViews();
+        if(browseBack!=null)browseBack.setVisibility(!queue()&&!searchScreen&&(parent!=null||!browseHistory.isEmpty())?View.VISIBLE:View.GONE);
+        if(resultsHost!=null)resultsHost.setEnabled(!queue());
         tools.setVisibility(tools.getChildCount()==0?View.GONE:View.VISIBLE);
         visibleRows.clear();for(int i=0;i<shown.size();i++)if(!queue()||matches(shown.get(i),query))visibleRows.add(i);
-        resultAdapter.notifyDataSetChanged();indexLetters();
+        hasAudioRows=shown.stream().anyMatch(t->t.type.equals("Audio"));resultAdapter.notifyDataSetChanged();indexLetters();
         if(restoreScroll>=0&&(restoreScroll<visibleRows.size()||(!morePages&&!loadingPage)||pageFailed)){
-            int position=Math.min(restoreScroll,Math.max(0,visibleRows.size()-1)),top=restoreTop;restoreScroll=-1;
-            ListView list=resultScroll;int request=generation;list.post(()->{if(!destroyed&&list==resultScroll&&request==generation)list.setSelectionFromTop(position,top);});
+            int position=Math.min(restoreScroll,Math.max(0,visibleRows.size()-1)),top=restoreTop;restoreScroll=position;
+            ListView list=resultScroll;int request=generation;
+            list.setSelectionFromTop(position,top);
+            list.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener(){
+                int attempts;
+                public boolean onPreDraw(){
+                    boolean valid=!destroyed&&list==resultScroll&&request==generation&&restoreScroll==position&&restoreTop==top;
+                    if(!valid){list.getViewTreeObserver().removeOnPreDrawListener(this);return true;}
+                    if(list.getHeight()==0||list.getChildCount()==0)return true;
+                    boolean placed=list.getFirstVisiblePosition()==position&&list.getChildAt(0).getTop()==list.getPaddingTop()+top;
+                    boolean atEnd=list.getLastVisiblePosition()==list.getCount()-1&&list.getFirstVisiblePosition()<position;
+                    boolean fits=!list.canScrollVertically(-1)&&!list.canScrollVertically(1);
+                    if(placed||atEnd||fits||attempts++>=3){restoreScroll=-1;list.getViewTreeObserver().removeOnPreDrawListener(this);return true;}
+                    // Keep the requested anchor until layout actually reaches it. Network
+                    // completion must not replace it with the previous view's layout.
+                    list.setSelectionFromTop(position,top);return false;
+                }
+            });
         }
         updatePlayer();
     }
+    boolean addAllFooter(){return !queue()&&hasAudioRows;}
     void buildResults(){
         resultScroll=new ListView(this);resultScroll.setBackground(Retro.bevel(Retro.LCD,true));resultScroll.setDivider(null);resultScroll.setPadding(dp(3),dp(3),dp(3),dp(3));resultScroll.setClipToPadding(true);
         resultAdapter=new BaseAdapter(){
-            @Override public int getCount(){return Math.max(1,visibleRows.size())+(!visibleRows.isEmpty()&&pageFailed?1:0);}
+            @Override public int getCount(){return Math.max(1,visibleRows.size())+(addAllFooter()?1:0);}
             @Override public Object getItem(int position){return position<visibleRows.size()?shown.get(visibleRows.get(position)):null;}
             @Override public long getItemId(int position){return position;}
             @Override public View getView(int position,View convertView,ViewGroup parentView){
                 if(position<visibleRows.size()){int index=visibleRows.get(position);return addRow(shown.get(index),index);}
+                if(addAllFooter())return button("ADD ALL",()->enqueue(new ArrayList<>(shown)));
                 if(pageFailed)return button("RETRY CONNECTION",()->{pageFailed=false;load(false);});
                 String message=loadingPage?"Loading…":searchScreen&&query.isBlank()?"FIND YOUR NEXT TRACK\n\nType above. Tap results to add them.\nYour current queue keeps playing.":queue()?"YOUR QUEUE IS QUIET\n\nTap tracks in the library to add them.\nYour queue stays until you clear it here.":section.equals("Offline")?"NO DOWNLOADS YET\n\nOpen a playlist or album and tap SAVE ↓.\nDownloads stay on this phone.":"NO MUSIC FOUND\n\nTry another search or refresh.\nDownloaded music is in Library → Offline.";
                 TextView hint=text(message,12,Retro.MUTED);hint.setPadding(dp(12),dp(18),dp(12),dp(18));return hint;
@@ -356,9 +414,10 @@ public final class MainActivity extends Activity {
         };
         resultScroll.setAdapter(resultAdapter);
         resultScroll.setOnScrollListener(new AbsListView.OnScrollListener(){public void onScrollStateChanged(AbsListView view,int state){}public void onScroll(AbsListView view,int first,int visible,int total){syncLetter();}});
-        resultsHost=row();resultsHost.addView(resultScroll,new LinearLayout.LayoutParams(0,-1,1));
+        LinearLayout listPanel=row();listPanel.addView(resultScroll,new LinearLayout.LayoutParams(0,-1,1));
         letterWheel=new LetterWheel(this,index->{if(index<letterPositions.size()){restoreScroll=-1;resultScroll.setSelectionFromTop(letterPositions.get(index),0);}});
-        letterWheel.setVisibility(View.GONE);resultsHost.addView(letterWheel,new LinearLayout.LayoutParams(dp(58),-1));
+        letterWheel.setVisibility(View.GONE);listPanel.addView(letterWheel,new LinearLayout.LayoutParams(dp(58),-1));
+        resultsHost=new PullRefreshLayout(this,listPanel,resultScroll,()->load(true));
     }
     View addRow(Track track,int index){
         LinearLayout item=row();item.setPadding(dp(4),dp(2),dp(2),dp(2));boolean current=queue()&&player!=null&&player.getCurrentMediaItemIndex()==index;
@@ -373,9 +432,9 @@ public final class MainActivity extends Activity {
         Boolean override=store==null?null:store.favoriteOverride(track.id);boolean favorite=override==null?track.favorite:override;
         TextView duration=text((favorite?"★ ":"")+(track.type.equals("Audio")?Track.time(track.duration):""),10,Retro.GREEN);item.addView(duration);
         detail.setOnClickListener(v->{if(selecting){if(!selected.remove(index))selected.add(index);render(morePages);return;}if(track.type.equals("Audio")){if(queue()&&player!=null){player.seekTo(index,0);player.prepare();player.play();}else enqueue(List.of(track));}else open(track);});
-        detail.setOnLongClickListener(v->{selecting=true;selected.add(index);render(morePages);return true;});
+        detail.setOnLongClickListener(v->{if(track.type.equals("Audio"))trackMenu(track,index);else libraryMenu();return true;});
+        item.setOnClickListener(v->detail.performClick());item.setOnLongClickListener(v->detail.performLongClick());
         if(track.type.equals("Audio")){
-            Button action=button("+",()->trackMenu(track,index));item.addView(action,new LinearLayout.LayoutParams(dp(42),dp(48)));
             if(queue()||playlist()){
                 TextView drag=text("≡",18,Retro.MUTED);drag.setGravity(Gravity.CENTER);drag.setContentDescription("Drag to reorder "+track.name);item.addView(drag,new LinearLayout.LayoutParams(dp(30),dp(48)));
                 drag.setOnLongClickListener(v->{v.startDragAndDrop(ClipData.newPlainText("rewindamp-row",String.valueOf(index)),new View.DragShadowBuilder(item),new DragToken(generation,index),0);return true;});
@@ -395,7 +454,9 @@ public final class MainActivity extends Activity {
         List<String> labels=new ArrayList<>(List.of("Add to queue","Play next","Play now (keep queue)","Add to playlist…",favorite?"Remove favourite":"Add favourite","Download for offline"));
         if(queue()||playlist())labels.addAll(List.of("Move up","Move down",queue()?"Remove from queue":"Remove from playlist"));
         if(section.equals("Offline"))labels.addAll(List.of("Retry download","Remove download from phone"));
+        labels.add("Select multiple tracks");
         new AlertDialog.Builder(this).setTitle(track.name).setItems(labels.toArray(new String[0]),(d,which)->{
+            if(which==labels.size()-1){selecting=true;selected.add(index);render(false);return;}
             if(demo){say("Connect to Jellyfin to manage your music");return;}
             switch(which){
                 case 0->enqueue(List.of(track));
@@ -447,20 +508,20 @@ public final class MainActivity extends Activity {
     }
     void settings(){
         String[] choices=demo?new String[]{"Connect to Jellyfin","About Rewindamp"}:new String[]{"Playback transitions","Downloads","Pause downloads","Resume downloads","Sync favourites and play history","Sign out","About Rewindamp"};
-        new AlertDialog.Builder(this).setTitle("Rewindamp 0.4.7").setItems(choices,(d,i)->{
+        new AlertDialog.Builder(this).setTitle("Rewindamp "+BuildConfig.VERSION_NAME).setItems(choices,(d,i)->{
             if(demo){if(i==0){demo=false;loginScreen();}else about();return;}
             switch(i){case 0->TransitionSettings.show(this);case 1->navigate("Offline");case 2->{offline.paused(true);say("Downloads paused");}case 3->{offline.paused(false);say("Downloads resumed");}
                 case 4->{say("Syncing…");io.execute(()->{new PlaybackReporter(api,store).sync();handler.post(()->say("Sync attempted · pending changes retry automatically"));});}
                 case 5->new AlertDialog.Builder(this).setTitle("Sign out?").setMessage("Playback and downloads stop. Saved queues and downloads stay private to this account on the phone.").setNegativeButton("Cancel",null).setPositiveButton("Sign out",(dd,w)->signOut()).show();default->about();}
         }).setNegativeButton("Close",null).show();
     }
-    void about(){new AlertDialog.Builder(this).setTitle("Rewindamp 0.4.7").setMessage("Classic controls. Your Jellyfin music.\n\nTap tracks to append. Clear only in Queue.\nHold ≡ to drag playlist or queue entries. Long-press a track to select several.\n\n10-band EQ with automatic headroom. The spectrum follows decoded audio; no microphone permission.\n\nAndroid Auto requires sign-in on your phone. For a sideloaded build, enable unknown sources in Android Auto developer settings.\n\nIndependent app; not affiliated with Winamp or Jellyfin.").setPositiveButton("Close",null).show();}
+    void about(){new AlertDialog.Builder(this).setTitle("Rewindamp "+BuildConfig.VERSION_NAME).setMessage("Classic controls. Your Jellyfin music.\n\nTap tracks to append. Clear only in Queue.\nHold ≡ to drag playlist or queue entries. Hold a track for actions and multi-selection.\n\n10-band EQ with automatic headroom. The spectrum follows decoded audio; no microphone permission.\n\nAndroid Auto requires sign-in on your phone. For a sideloaded build, enable unknown sources in Android Auto developer settings.\n\nIndependent app; not affiliated with Winamp or Jellyfin.").setPositiveButton("Close",null).show();}
     void signOut(){
         generation++;busy=false;JellyfinApi previous=api;if(player!=null)player.pause();if(controllerFuture!=null){MediaController.releaseFuture(controllerFuture);controllerFuture=null;}player=null;
-        stopService(new Intent(this,PlaybackService.class));OfflineLibrary.pause(this);new androidx.media3.exoplayer.scheduler.PlatformScheduler(this,42).cancel();SessionStore.clear(this);browseHistory.clear();previousBrowseRows=null;previousBrowse=null;api=null;offline=null;store=null;undo=null;pendingQueue.clear();shown.clear();parent=null;section="Tracks";query="";loginScreen();
+        stopService(new Intent(this,PlaybackService.class));OfflineLibrary.pause(this);new androidx.media3.exoplayer.scheduler.PlatformScheduler(this,42).cancel();SessionStore.clear(this);browseHistory.clear();previousBrowseRows=null;previousBrowse=null;musicPage=null;displayedKey="";api=null;offline=null;store=null;undo=null;pendingQueue.clear();shown.clear();parent=null;section="Tracks";query="";loginScreen();
         io.execute(()->{try{previous.request("POST","/Sessions/Logout",null);}catch(Exception ignored){}});
     }
-    void say(String message){if(status!=null)status.setText(message);}
+    void say(String message){statusRevision++;if(status!=null)status.setText(message);}
     String message(Exception ex){String text=ex.getMessage();if(text!=null&&(ex instanceof IllegalArgumentException||text.startsWith("Jellyfin")||text.startsWith("Sign-in")||text.startsWith("Your Jellyfin")||text.startsWith("This server")))return text;return "Cannot reach Jellyfin · downloaded music is available in Offline";}
     List<Track> demoItems(){
         if(section.equals("Queue")||section.equals("Offline")||section.equals("History"))return List.of();
@@ -471,6 +532,6 @@ public final class MainActivity extends Activity {
         java.util.Comparator<Track> byTitle=java.util.Comparator.comparing(t->t.name,String.CASE_INSENSITIVE_ORDER);
         filtered.sort(section.equals("Artists")&&parent==null?java.util.Comparator.comparing((Track t)->t.artist,String.CASE_INSENSITIVE_ORDER).thenComparing(byTitle):byTitle);return filtered;
     }
-    @Override public void onBackPressed(){if(searchScreen){closeSearch();return;}if(selecting){selecting=false;selected.clear();render(morePages);}else if(parent!=null||!browseHistory.isEmpty()){backBrowse();}else super.onBackPressed();}
+    @Override public void onBackPressed(){if(queue()){showMusic();return;}if(searchScreen){closeSearch();return;}if(selecting){selecting=false;selected.clear();render(morePages);}else if(parent!=null||!browseHistory.isEmpty()){backBrowse();}else super.onBackPressed();}
     @Override protected void onDestroy(){destroyed=true;if(spectrum!=null)spectrum.setPlaybackActive(false);handler.removeCallbacksAndMessages(null);artwork.close();if(controllerFuture!=null)MediaController.releaseFuture(controllerFuture);io.shutdownNow();searchIo.shutdownNow();super.onDestroy();}
 }
