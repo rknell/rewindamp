@@ -7,8 +7,8 @@ android {
         applicationId 'dev.rewindamp'
         minSdk 26
         targetSdk 35
-        versionCode 20
-        versionName '0.4.9'
+        versionCode 21
+        versionName '0.4.10'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     compileOptions { coreLibraryDesugaringEnabled true; sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }

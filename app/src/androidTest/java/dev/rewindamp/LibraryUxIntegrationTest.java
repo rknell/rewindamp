@@ -100,4 +100,66 @@ public class LibraryUxIntegrationTest {
             assertNull(h.read(()->h.lastText(b.content(),"Loading…")));assertNotNull(h.read(()->h.lastText(b.content(),"TRACKS · 0 ITEMS")));b.ready(226);
         }
     }
+    final class RecordingWheel extends DestinationWheel {
+        final List<Integer> feedback=new ArrayList<>();
+        RecordingWheel(android.content.Context context,java.util.function.IntConsumer change){super(context,0,change);}
+        @Override public boolean performHapticFeedback(int value){feedback.add(value);return true;}
+    }
+    RecordingWheel attachWheel(Browser browser,java.util.function.IntConsumer change){return h.read(()->{
+        DestinationWheel original=find(browser.content(),DestinationWheel.class);ViewGroup parent=(ViewGroup)original.getParent();int index=parent.indexOfChild(original);ViewGroup.LayoutParams params=original.getLayoutParams();parent.removeView(original);
+        RecordingWheel wheel=new RecordingWheel(browser.activity,change);parent.addView(wheel,index,params);return wheel;
+    });}
+    void gesture(View wheel,int action,float x,float y){h.main(()->{long now=SystemClock.uptimeMillis();MotionEvent event=MotionEvent.obtain(now,now,action,x,y,0);wheel.dispatchTouchEvent(event);event.recycle();});}
+    android.graphics.Bitmap labelBitmap(View wheel){return h.read(()->{
+        android.graphics.Bitmap full=android.graphics.Bitmap.createBitmap(wheel.getWidth(),wheel.getHeight(),android.graphics.Bitmap.Config.ARGB_8888);wheel.draw(new android.graphics.Canvas(full));
+        int width=Retro.dp(h.context,88),height=Retro.dp(h.context,22);android.graphics.Bitmap label=android.graphics.Bitmap.createBitmap(full,(full.getWidth()-width)/2,(full.getHeight()-height)/2,width,height);full.recycle();return label;
+    });}
+    @Test public void horizontalWheelHighlightsAndTicksDuringDragThenOpensOnce()throws Exception{
+        try(Browser b=new Browser()){
+            b.start();b.ready(226);List<Integer> opened=new ArrayList<>();RecordingWheel wheel=attachWheel(b,index->{opened.add(index);if(index==2)b.activity.showQueue();});h.instrumentation.waitForIdleSync();
+            float d=h.context.getResources().getDisplayMetrics().density,x=h.read(()->wheel.getWidth()/2f),y=h.read(()->wheel.getHeight()/2f);android.graphics.Bitmap before=labelBitmap(wheel);
+            gesture(wheel,MotionEvent.ACTION_DOWN,x,y);gesture(wheel,MotionEvent.ACTION_MOVE,x-49*d,y);
+            assertTrue(h.read(()->wheel.getContentDescription().toString().contains("Podcasts selected")));assertEquals(List.of(HapticFeedbackConstants.CLOCK_TICK),wheel.feedback);assertTrue(opened.isEmpty());
+            android.graphics.Bitmap preview=labelBitmap(wheel);assertFalse("The highlighted label must redraw before release",before.sameAs(preview));before.recycle();preview.recycle();
+            gesture(wheel,MotionEvent.ACTION_MOVE,x-97*d,y);assertTrue(h.read(()->wheel.getContentDescription().toString().contains("Queue selected")));assertEquals(2,wheel.feedback.size());assertTrue(opened.isEmpty());
+            gesture(wheel,MotionEvent.ACTION_UP,x-97*d,y);assertEquals(List.of(2),opened);assertEquals("Release must not add another tick",2,wheel.feedback.size());assertTrue(h.read(()->b.activity.queue()));
+        }
+    }
+    @Test public void cancelledHorizontalTurnRestoresSelectionAndTapsStillTickOnce()throws Exception{
+        try(Browser b=new Browser()){
+            b.start();b.ready(226);List<Integer> opened=new ArrayList<>();RecordingWheel wheel=attachWheel(b,opened::add);h.instrumentation.waitForIdleSync();
+            float d=h.context.getResources().getDisplayMetrics().density,x=h.read(()->wheel.getWidth()/2f),y=h.read(()->wheel.getHeight()/2f);
+            gesture(wheel,MotionEvent.ACTION_DOWN,x,y);gesture(wheel,MotionEvent.ACTION_MOVE,x-49*d,y);gesture(wheel,MotionEvent.ACTION_CANCEL,x-49*d,y);
+            assertTrue(h.read(()->wheel.getContentDescription().toString().contains("Music selected")));assertTrue(opened.isEmpty());assertEquals(1,wheel.feedback.size());
+            wheel.feedback.clear();float right=h.read(()->wheel.getWidth()*5/6f);gesture(wheel,MotionEvent.ACTION_DOWN,right,y);gesture(wheel,MotionEvent.ACTION_UP,right,y);
+            assertEquals(List.of(1),opened);assertEquals(List.of(HapticFeedbackConstants.CLOCK_TICK),wheel.feedback);
+        }
+    }
+    boolean colorNear(android.graphics.Bitmap bitmap,int color,int centerY,int radius){
+        int d=Retro.dp(h.context,8);for(int y=Math.max(0,centerY-radius);y<Math.min(bitmap.getHeight(),centerY+radius);y++)for(int x=bitmap.getWidth()/2-d;x<bitmap.getWidth()/2+d;x++)if(bitmap.getPixel(x,y)==color)return true;return false;
+    }
+    @Test public void verticalLettersFillTheAvailableHeightAndKeepTheSelectionCentered()throws Exception{
+        try(Browser b=new Browser()){
+            b.start();b.ready(226);
+            android.graphics.Bitmap bitmap=h.read(()->{
+                LetterWheel wheel=new LetterWheel(b.activity,index->{});List<String> alphabet=new ArrayList<>();for(char c='A';c<='Z';c++)alphabet.add(String.valueOf(c));wheel.setLetters(alphabet);wheel.select(12);
+                int width=Retro.dp(h.context,58),height=Retro.dp(h.context,360);wheel.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));wheel.layout(0,0,width,height);
+                android.graphics.Bitmap rendered=android.graphics.Bitmap.createBitmap(width,height,android.graphics.Bitmap.Config.ARGB_8888);wheel.draw(new android.graphics.Canvas(rendered));return rendered;
+            });
+            int radius=Retro.dp(h.context,12),distance=Retro.dp(h.context,150);assertTrue("Earlier letters should fill the upper drum",colorNear(bitmap,Retro.MUTED,bitmap.getHeight()/2-distance,radius));assertTrue("Later letters should fill the lower drum",colorNear(bitmap,Retro.MUTED,bitmap.getHeight()/2+distance,radius));assertTrue(colorNear(bitmap,Retro.GREEN,bitmap.getHeight()/2,radius));bitmap.recycle();
+        }
+    }
+    Set<String> albumNames(Browser browser){return h.read(()->{Set<String> names=new HashSet<>();for(int i=0;i<browser.list().getCount();i++){Object item=browser.list().getAdapter().getItem(i);if(item instanceof Track track)names.add(track.name);}return names;});}
+    @Test public void albumsHideSingleAndMissingAlbumGroupsAndPopupContainsOnlyMusic()throws Exception{
+        try(Browser b=new Browser()){
+            b.start();b.ready(226);List<String> names=Arrays.asList("Singles","Single","Unknown Album","No Album","",null,"Afterglow - Single","Signal (Single)","Singles Going Steady","Single Life","Untitled","Midnight FM");
+            b.server.albumCatalog=true;b.server.albumNames=names;b.server.delayMillis=1200;List<Track> cached=new ArrayList<>();for(int i=0;i<names.size();i++)cached.add(new Track("cached-"+i,names.get(i)==null?"":names.get(i),"Fixture Artist","","MusicAlbum","",0));b.store.tracks("browse-all-v1:Albums:null:",cached);
+            h.main(b.activity::chooseSection);h.instrumentation.waitForIdleSync();var popup=h.instrumentation.getUiAutomation().getRootInActiveWindow();assertTrue("Podcasts belongs on the destination wheel",popup.findAccessibilityNodeInfosByText("Podcasts").isEmpty());var albums=popup.findAccessibilityNodeInfosByText("Albums");assertFalse(albums.isEmpty());
+            var option=albums.get(0);while(option!=null&&!option.isClickable())option=option.getParent();assertNotNull(option);assertTrue(option.performAction(AccessibilityNodeInfo.ACTION_CLICK));
+            b.ready(4);Set<String> expected=Set.of("Singles Going Steady","Single Life","Untitled","Midnight FM");assertEquals(expected,albumNames(b));
+            h.await(()->h.read(()->b.list().getAdapter().getItem(0) instanceof Track track&&track.id.startsWith("album-")),10);assertEquals(expected,albumNames(b));
+            assertFalse("Unfiled songs remain available as individual tracks",new Track("song","Singles","Artist","","Audio","",0).hiddenAlbum());
+        }
+    }
+
 }

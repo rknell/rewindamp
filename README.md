@@ -29,7 +29,7 @@ no original Winamp skin images are bundled. Demo mode uses fictional titles.
 ## Podcasts and Rewindamp Server
 
 Rewindamp now includes a separate **Podcasts** deck using the same classic metal buttons,
-green LCD and title rails. Choose Podcasts in the library menu, or connect from the login
+green LCD and title rails. Choose Podcasts on the bottom destination wheel, or connect from the login
 screen without a Jellyfin account. The independent Docker server downloads RSS episodes,
 archives them and synchronizes per-episode listening history. Server deployment, authentication, subscription passes and backup/restore are documented
 separately in `rewindamp-server/README.md` in the media-server workspace.
@@ -43,9 +43,11 @@ Android stores an encrypted session token rather than the password. Searches use
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Local development builds are **0.4.9**.
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.10**.
 Music and podcast decks share a horizontal metal destination wheel for Music / Podcasts /
-Queue, including their connection screens. Swipe it left or right, or tap either side. Focused search screens use Back to return to the library. Switching tabs leaves playback alone; starting the other kind of audio
+Queue, including their connection screens. Dragging highlights each newly selected
+destination in green and gives a haptic tick at every detent, like the vertical letter
+wheel. Release to open the highlighted destination, or tap either side for one step. Focused search screens use Back to return to the library. Switching tabs leaves playback alone; starting the other kind of audio
 uses Android audio focus to pause the first player.
 
 The podcast header has a Settings cog. The single transport row is Previous episode,
@@ -112,7 +114,8 @@ explicit action in the Queue view, so browsing for the next song does not wipe y
   drawn, so large libraries stay light. Search results and playlist entries also load in full.
 - **Turn the metal letter wheel** on the right to jump immediately to a letter, then scroll
   the list on the left to choose a track. The full-height knurled drum has a fixed pointer, green letter
-  window and tactile detents. Swipe up for later letters and down for earlier ones, or tap
+  window and tactile detents. More surrounding letters appear as the panel grows, using
+  the available height with readable labels. Swipe up for later letters and down for earlier ones, or tap
   above/below the window for one step. It skips letters absent from the current collection
   and follows the first visible row when you scroll the list. Tracks use title initials;
   Artists and Albums use artist initials. Numbers and symbols appear under `#`. Queue,
@@ -142,7 +145,11 @@ The library dropdown switches between Tracks, Albums, Artists, Playlists, Favour
 Offline and History. **Tracks** is a flat list sorted by track title. **Artists** shows the
 same tracks in a flat list sorted by artist, then track title; tap any track to queue it,
 with no artist/album navigation. **Albums** is sorted by album artist, then album name;
-open an album to see its tracks in disc/track order. The complete phone collection is grouped
+open an album to see its tracks in disc/track order. The phone Albums browser hides
+Singles/no-album groups and explicit single-release labels; ordinary titles containing
+the word “single” remain visible. Individual songs stay in Tracks and Artists. The
+Music Library popup lists music views only; Podcasts lives on the bottom wheel.
+The complete phone collection is grouped
 alphabetically by the displayed title or artist, including accented initials. Android Auto
 keeps its server browsing order.
 

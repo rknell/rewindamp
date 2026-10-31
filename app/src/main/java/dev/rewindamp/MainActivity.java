@@ -32,7 +32,7 @@ import java.util.function.Consumer;
 
 @androidx.annotation.OptIn(markerClass=androidx.media3.common.util.UnstableApi.class)
 public final class MainActivity extends Activity {
-    private static final String[] SECTIONS={"Tracks","Albums","Artists","Playlists","Favourites","Offline","History","Podcasts"};
+    private static final String[] SECTIONS={"Tracks","Albums","Artists","Playlists","Favourites","Offline","History"};
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService io=Executors.newSingleThreadExecutor(),searchIo=Executors.newFixedThreadPool(2);
     private final ArtworkLoader artwork=new ArtworkLoader();
@@ -215,7 +215,7 @@ public final class MainActivity extends Activity {
         weighted(bands,new Retro.BandSlider(this,"PRE",settings.preamp(),value->{DspSettings.Values s=DspSettings.get();DspSettings.set(this,s.enabled(),value,s.gains());}),94);
         for(int i=0;i<10;i++){int band=i;weighted(bands,new Retro.BandSlider(this,DspSettings.LABELS[i],settings.gains()[i],value->{DspSettings.Values s=DspSettings.get();float[] gains=s.gains().clone();gains[band]=value;DspSettings.set(this,s.enabled(),s.preamp(),gains);}),94);}
     }
-    void chooseSection(){new AlertDialog.Builder(this).setTitle("Music library").setItems(SECTIONS,(d,i)->{if(SECTIONS[i].equals("Podcasts"))startActivity(new Intent(this,PodcastActivity.class));else navigate(SECTIONS[i]);}).setNegativeButton("Cancel",null).show();}
+    void chooseSection(){new AlertDialog.Builder(this).setTitle("Music library").setItems(SECTIONS,(d,i)->navigate(SECTIONS[i])).setNegativeButton("Cancel",null).show();}
     BrowseState captureBrowse(){
         int scroll=restoreScroll>=0?restoreScroll:resultScroll==null?0:resultScroll.getFirstVisiblePosition();
         int top=restoreScroll>=0?restoreTop:resultScroll==null||resultScroll.getChildCount()==0?0:resultScroll.getChildAt(0).getTop()-resultScroll.getPaddingTop();
@@ -338,6 +338,7 @@ public final class MainActivity extends Activity {
     boolean alphabetical(){return !searchScreen&&parent==null&&!queue()&&!section.equals("History");}
     String alphabetName(Track track){return section.equals("Artists")||section.equals("Albums")?track.artist:track.name;}
     void sortLibrary(){
+        shown.removeIf(Track::hiddenAlbum);
         if(!alphabetical())return;
         shown.sort(java.util.Comparator.comparing((Track t)->LetterWheel.letter(alphabetName(t)))
             .thenComparing(t->alphabetName(t),String.CASE_INSENSITIVE_ORDER).thenComparing(t->t.name,String.CASE_INSENSITIVE_ORDER));

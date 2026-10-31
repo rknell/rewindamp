@@ -105,6 +105,7 @@ public class AdvancedIntegrationTest {
         final List<String> terms=Collections.synchronizedList(new ArrayList<>());
         volatile boolean failNext=false,albumCatalog=false,alphabetCatalog=false,extraFirst=false;
         volatile int delayMillis=0;
+        volatile List<String> albumNames;
         final List<String> paths=Collections.synchronizedList(new ArrayList<>());
         PagedLibrary()throws Exception{executor.execute(()->{while(!server.isClosed())try{java.net.Socket socket=server.accept();executor.execute(()->serve(socket));}catch(Exception ignored){}});}
         void serve(java.net.Socket socket){try(socket){
@@ -119,8 +120,9 @@ public class AdvancedIntegrationTest {
                 int total="Overlap Artist".equals(term)&&uri.getQueryParameter("ArtistIds")==null?1:225;
                 boolean album=albumCatalog&&"MusicAlbum".equals(uri.getQueryParameter("IncludeItemTypes"));
                 if(extraFirst&&!album)items.put(new org.json.JSONObject().put("Id","new-arrival").put("Name","000 New arrival").put("Type","Audio").put("Artists",new org.json.JSONArray().put("Fixture Artist")));
+                if(album&&albumNames!=null)total=albumNames.size();
                 int limit=uri.getQueryParameter("Limit")==null?total:Integer.parseInt(uri.getQueryParameter("Limit"));
-                for(int i=offset;i<Math.min(offset+limit,total);i++)items.put(new org.json.JSONObject().put("Id",(album?"album-":"paged-")+i).put("Name",alphabetCatalog?String.format(Locale.US,"%c Track %03d",(char)('A'+i/9),i):overlap&&i==0?"Overlap Artist":String.format(Locale.US,album?"Album %03d":"Paged %03d",i)).put("Type",album?"MusicAlbum":"Audio").put("Artists",new org.json.JSONArray().put(overlap?"Overlap Artist":"Fixture Artist")));
+                for(int i=offset;i<Math.min(offset+limit,total);i++)items.put(new org.json.JSONObject().put("Id",(album?"album-":"paged-")+i).put("Name",album&&albumNames!=null?albumNames.get(i):alphabetCatalog?String.format(Locale.US,"%c Track %03d",(char)('A'+i/9),i):overlap&&i==0?"Overlap Artist":String.format(Locale.US,album?"Album %03d":"Paged %03d",i)).put("Type",album?"MusicAlbum":"Audio").put("Artists",new org.json.JSONArray().put(overlap?"Overlap Artist":"Fixture Artist")));
             }
             byte[] body=new org.json.JSONObject().put("Items",items).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
             socket.getOutputStream().write(("HTTP/1.1 "+(failed?"503 Unavailable":"200 OK")+"\r\nContent-Type: application/json\r\nContent-Length: "+body.length+"\r\nConnection: close\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));socket.getOutputStream().write(body);

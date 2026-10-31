@@ -67,9 +67,10 @@ final class LetterWheel extends View {
         // A dark legend strip rotates with the drum; the housing's pointer stays fixed.
         paint.setColor(0xE6172028);canvas.drawRect(w/2-10*d,top,w/2+10*d,bottom,paint);
         paint.setTypeface(Retro.MONO);paint.setTextAlign(Paint.Align.CENTER);
-        for(int delta=-3;delta<=3;delta++){
+        float firstGap=30*d,spacing=24*d;int visibleSteps=radius<firstGap+8*d?0:1+(int)((radius-8*d-firstGap)/spacing);
+        for(int delta=-visibleSteps;delta<=visibleSteps;delta++){
             int index=selected+delta;if(index<0||index>=letters.size()||delta==0)continue;
-            float y=cy+delta*27*d;paint.setTextSize((14-Math.abs(delta))*d);paint.setColor(Math.abs(delta)==1?Retro.WHITE:Retro.MUTED);canvas.drawText(letters.get(index),w/2,y+4*d,paint);
+            float y=cy+Math.signum(delta)*(firstGap+(Math.abs(delta)-1)*spacing);paint.setTextSize((Math.abs(delta)==1?14:12)*d);paint.setColor(Math.abs(delta)==1?Retro.WHITE:Retro.MUTED);canvas.drawText(letters.get(index),w/2,y+4*d,paint);
         }
         canvas.restore();
         paint.setColor(0xFF030604);canvas.drawRoundRect(left-2*d,cy-18*d,right+2*d,cy+18*d,3*d,3*d,paint);
