@@ -13,7 +13,7 @@ import javax.crypto.spec.GCMParameterSpec;
 
 /** Only an encrypted session is persisted; passwords are never stored. */
 final class SessionStore {
-    private static SecretKey key() throws Exception {
+    static synchronized SecretKey key() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
         if (!store.containsAlias("rewindamp-session")) {
             KeyGenerator generator = KeyGenerator.getInstance("AES", "AndroidKeyStore");

@@ -13,7 +13,7 @@ phones and Android Auto, and thoughtful UI polish all help. See [Contributing](C
 
 - Fast, queue-first browsing: additions keep the music going.
 - An easy queue and playlist builder for parties and putting together a quick vibe.
-- Track-title and artist search that updates as you type, plus infinite scrolling.
+- Track-title and artist search that updates as you type, plus a metal letter thumbwheel.
 - A native classic-player skin, real ten-band EQ, and a spectrum that moves with the music.
 - Gapless playback, optional crossfade, offline downloads, and Android Auto browsing.
 - MIT licensed. Bring your own Jellyfin server and account. Android 8.0 or newer.
@@ -26,17 +26,78 @@ phones and Android Auto, and thoughtful UI polish all help. See [Contributing](C
 Independent app; unaffiliated with Winamp or Jellyfin. The interface is drawn natively;
 no original Winamp skin images are bundled. Demo mode uses fictional titles.
 
+## Podcasts and Rewindamp Server
+
+Rewindamp now includes a separate **Podcasts** deck using the same classic metal buttons,
+green LCD and title rails. Choose Podcasts in the library menu, or connect from the login
+screen without a Jellyfin account. The independent Docker server downloads RSS episodes,
+archives them and synchronizes per-episode listening history. Server deployment, authentication, subscription passes and backup/restore are documented
+separately in `rewindamp-server/README.md` in the media-server workspace.
+
+Use **+ Find shows** to search Apple Podcasts' Australian catalogue by title or publisher.
+Choose a show, select a subscription pass, then confirm. New subscriptions default to future
+episodes only; already subscribed feeds are labelled. Manual RSS entry is also available in
+podcast settings. Connect using your owner password after setting it on the server website.
+Android stores an encrypted session token rather than the password. Searches use the Rewindamp server; no Apple account or API key is needed.
+
+Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
+played/dismissed/reset actions and app-private phone downloads are separate from music.
+The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.8**.
+Music and podcast decks share a bottom Music / Podcasts bar, including their connection
+screens. Focused search screens use Back to return to the library. Switching tabs leaves playback alone; starting the other kind of audio
+uses Android audio focus to pause the first player.
+
+The podcast header has a Settings cog. The single transport row is Previous episode,
+15 seconds back, Play/Pause, 30 seconds forward, Next episode, and speed. Long episode titles
+scroll without being reset on every clock tick. Tap the green time display to toggle between
+elapsed and remaining time, just like music; the podcast choice is remembered across app
+restarts. Unknown durations show `--:--` in remaining mode. A remaining-time label and tappable Up Next
+strip show where you are and what follows. The pencil beside a selected show edits its
+automatic download rule; it is hidden for All Shows. Empty lists offer **View all podcasts**
+to browse older episodes outside the download pass.
+
+Choose **Oldest first** or **Newest first** for each show (and separately for All Shows).
+Played and dismissed episodes are hidden and skipped by default; enable **Show played and
+dismissed episodes** in Settings to include them. Starting an episode snapshots all playable
+server/phone-saved episodes in that view into a queue, across catalogue pages. Next follows
+that queue's order and selected show; All Shows interleaves shows by publication date.
+Unavailable audio is excluded until downloaded. Browsing a different show does not replace
+a playing queue; starting another episode creates a new queue from that view. Automatic
+completion marks the finished episode played. Queue, position and speed restore paused
+after a service restart. Tap an episode row to play or resume it. In-progress episodes show a small progress line and remaining time; the overflow menu retains played/reset, dismiss and phone-copy actions.
+
+Regular Bluetooth/car next and previous controls seek forward 30 seconds and back 15 seconds
+within the current podcast, including single-episode queues. The phone’s Previous/Next episode
+buttons and queue selection still change episodes; music transport behavior is unchanged.
+
+The moon in the podcast header opens a sleep timer: 15, 30, 60, 90 or 120 minutes, or pause at the
+end of the current episode. It runs in the playback service while the screen is off. A timed
+pause clears itself; changing episodes cancels an end-of-episode timer.
+
+Settings → **Offline downloads** shows saved/pending/failed counts, phone storage and free
+space. View phone copies, retry failed copies through their episode menu, pause/resume
+transfers, download the next three unplayed server-saved episodes in the selected view, or
+remove completed phone copies with confirmation. Wi-Fi-only downloads are the default and
+can be changed. Optional automatic downloads keep the next 1, 3 or 5 queued episodes on the
+phone; this starts off and does not expand the server’s subscription pass. Removing all
+completed phone copies also switches automatic downloading off. Server archives and history
+are kept; phone files remain private to this app and server.
+
 ## Install
 
 Get the APK from [GitHub Releases](https://github.com/rknell/rewindamp/releases/latest),
-install it, and sign in to your Jellyfin server. Use HTTPS outside a trusted home network.
+install it, and sign in to your Jellyfin server. To receive updates through **Obtainium**,
+choose **Add app** and paste `https://github.com/rknell/rewindamp`. Published releases include
+one APK and its checksum. Use HTTPS outside a trusted home network.
 Server base paths are supported. You can explore Demo mode before connecting.
 
 The existing published **0.3.6** release uses the former Jellyamp name and application ID.
 Current Rewindamp source uses the clean `dev.rewindamp` identity and installs separately;
 old app data is not automatically migrated. Builds remain debug signed. Uninstalling either
 app removes its phone-only downloads and saved data; server playlists remain on Jellyfin.
-Build the current source using the instructions below for the renamed app.
+The current Rewindamp APK is published on the same Releases page. See
+[RELEASING.md](RELEASING.md) for the signing and publishing process.
 
 To make a quick mix: tap tracks to queue them, open **Queue** to reorder or remove entries,
 and use **Save As** to keep the mix as a private Jellyfin playlist. Clearing the queue is an
@@ -47,9 +108,16 @@ explicit action in the Queue view, so browsing for the next song does not wipe y
 - **Tap a library track to append it immediately.** The first entry starts playing;
   subsequent taps keep the current song and position. Adding to a paused queue leaves it paused.
 - **ADD ALL** appends the loaded tracks, album or playlist. The entire library is reachable
-  through seamless infinite scrolling: the next 100 items are prefetched as you approach the
-  bottom, with no Load More button. Only visible rows are drawn, so large libraries stay light.
-  Search results use the same automatic loading. Playlist entries load in full.
+  in one load, with no pagination or further fetches while scrolling. Only visible rows are
+  drawn, so large libraries stay light. Search results and playlist entries also load in full.
+- **Turn the metal letter wheel** on the right to jump immediately to a letter, then scroll
+  the list on the left to choose a track. The knurled drum has a fixed pointer, green letter
+  window and tactile detents. Swipe up for later letters and down for earlier ones, or tap
+  above/below the window for one step. It skips letters absent from the current collection
+  and follows the first visible row when you scroll the list. Tracks use title initials;
+  Artists and Albums use artist initials. Numbers and symbols appear under `#`. Queue,
+  album/playlist track order, search relevance and listening history keep their existing
+  order and hide the wheel. Accessibility scroll actions and arrow keys also turn it.
 - **Tap the green time display** to switch between elapsed and remaining time. Remaining
   time has a minus sign; the choice is remembered across app restarts. Unknown durations
   display `--:--` in remaining mode until the duration becomes available.
@@ -72,14 +140,13 @@ The library dropdown switches between Tracks, Albums, Artists, Playlists, Favour
 Offline and History. **Tracks** is a flat list sorted by track title. **Artists** shows the
 same tracks in a flat list sorted by artist, then track title; tap any track to queue it,
 with no artist/album navigation. **Albums** is sorted by album artist, then album name;
-open an album to see its tracks in disc/track order. Sorting happens on the server before
-paging, so the order stays consistent throughout infinite scrolling. Android Auto uses
-the same browsing order.
+open an album to see its tracks in disc/track order. The complete phone collection is grouped
+alphabetically by the displayed title or artist, including accented initials. Android Auto
+keeps its server browsing order.
 
 **Back remembers your place.** Opening an album, playlist or nested library view saves its
-parent list and exact scroll offset. Each Back step returns to that location, including
-pages reached through infinite scrolling. Returning from search also restores the list
-immediately. Android Back and **‹ BACK** behave the same way. Navigation positions survive
+parent list and exact scroll offset. Each Back step returns to that location within the
+complete loaded collection. Returning from search also restores the list immediately. Android Back and **‹ BACK** behave the same way. Navigation positions survive
 screen recreation; lists reload only when needed, including after playlist edits.
 Artwork appears in the list and player and is cached for offline use and media notifications.
 Missing covers use a small placeholder.
@@ -93,13 +160,70 @@ Media files are never deleted by playlist actions. Whole playlist deletion remai
 
 ## Search that stays visible
 
-Tap the search field or **GO** to open a dedicated search screen. Its input stays at the top,
+Tap **Search** in the library toolbar to open a dedicated search screen. Its input stays at the top,
 above the keyboard, with results in the scrollable area below. Results update after a short
 300 ms pause in typing; no button press is needed. Search includes track titles and artist names,
 including contributing artists. Title matches appear first, then tracks by matching artists,
-without duplicate tracks. Both streams load in pages as you scroll. Tap several results to append them without closing the keyboard or interrupting
-the current song. **DONE** or the keyboard's Search key dismisses the keyboard to expose more results.
+without duplicate tracks. Both streams load completely and are deduplicated. Tap several results to append them without closing the keyboard or interrupting
+the current song. **Done** or the keyboard's Search key dismisses the keyboard to expose more results.
 **‹ BACK** returns to the previous library/playlist location; **QUEUE** opens the existing queue.
+
+## Add music through Mixarr
+
+From music search, choose **Can’t find it? Search online**. Sign in with a separate Mixarr
+account (the address defaults to `https://mixarr.snappyapps.com.au`), then use one field for
+a song, artist, album, or combination. Mixarr searches MusicBrainz with partial-word and typo
+matching. Review the title, artist, album, duration and version, then choose **ADD**.
+Searching never queues acquisition; only confirming a selected recording does.
+
+You can also paste an HTTPS YouTube video or playlist link into the same field. Video links
+show **PREVIEW YOUTUBE IMPORT**: review and edit the title, artist, album and chapter times,
+select tracks, then choose **IMPORT SELECTED AUDIO**. Chapter times are seconds from the start
+of the video; use **ADD ANOTHER CHAPTER** to split a continuous album manually. Selected chapters
+must stay inside the video and cannot overlap. The preview itself never starts a download.
+
+Playlist links show **DOWNLOAD ENTIRE PLAYLIST**. Tapping this queues every available unique
+video immediately, up to Mixarr's 100-track limit. Opening the screen with a playlist link does
+not queue it. Use `/playlist?list=...` for a playlist; a video link containing `list=...` still
+previews only that video. This imports audio once, without setting up playlist synchronization.
+
+The **Library activity** strip opens a dedicated Activity screen for requests and imports.
+Search results stay available after adding a recording; acquisition rows never share the results list.
+The music deck also shows a compact scrolling activity strip when Mixarr is connected.
+Status refreshes every five seconds while that screen or strip is in the foreground.
+
+Recent YouTube imports show per-track states and refresh every five seconds while pending.
+Their status survives closing and reopening this screen; full download progress and failed-import
+controls are available in Mixarr Activity. Preview tokens stay in memory and are never saved.
+Mixarr's media and YouTube acquisition gates, exclusions, cooldowns and existing-audio protection
+continue to apply. A matching Mixarr backend with `/api/v1/youtube-imports` support is required.
+
+Activity shows available, queued, processing, paused, completed or failed requests. Progress
+updates every five seconds while Activity or online search is open, including the current stage and stream
+percentage, bytes, speed and ETA when supplied. Requests continue on Mixarr after leaving the
+screen. The last 30 requests (recordings or YouTube import batches) stay on the phone for status checks when you return.
+After a failure, **SEARCH AGAIN TO RETRY** obtains a fresh selection; choose Add again to retry.
+Reopening a search after returning checks Jellyfin again for newly available tracks.
+
+Mixarr's acquisition/source settings, exclusions, rejected matches and media correction holds
+still apply. It reuses active jobs and available recordings and retains confirmed requests
+independently of playlists. Mixarr refreshes Jellyfin after acquisition; indexing can take time.
+This adds server library media through Mixarr, separate from **Download** phone copies.
+
+The Mixarr session cookie and CSRF token are encrypted with Android Keystore and scoped to the
+signed-in Jellyfin account. Jellyfin credentials are never sent to Mixarr. Passwords and selection
+tokens are not saved; **MIXARR CONNECTION → DISCONNECT MIXARR** clears the local session and
+attempts server logout. HTTPS is required outside local test hosts.
+
+Deploy the matching Mixarr backend for the requester-only progress endpoint:
+`GET /api/v1/track-requests/jobs/{job_id}`. The endpoint returns only fixed stages and validated
+numeric progress, without download references or other users' request details.
+
+The self-contained Android checks run against an HTTP fixture inside the emulator:
+
+```sh
+./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.rewindamp.MixarrIntegrationTest
+```
 
 ## Gapless playback and optional crossfading
 
@@ -214,6 +338,7 @@ With an Android emulator running, Docker, ffmpeg and Python 3 available:
 ./scripts/integration-test.sh
 ```
 
+The script also starts a synthetic podcast fixture on loopback port 18097.
 The script creates an isolated Jellyfin 10.11 on loopback port 18096 with two generated tones
 and a synthetic album cover, and removes only its own test container on exit. It leaves its
 printed temporary test directory for inspection. No production mounts, credentials or media
@@ -225,14 +350,20 @@ artwork, actual EQ frequency response and PCM spectrum data, favourite/history s
 undo/duplication, encrypted sessions, URL validation and car browsing/voice queue selection.
 Additional checks verify search remains visible above a real software keyboard, queue additions
 from live search, artist-name matches with different track titles, debounced typing and
-deduplicated title/artist pagination, crossfade handoff/gains/volume persistence and pausing both players, metadata
+deduplicated full title/artist results, crossfade handoff/gains/volume persistence and pausing both players, metadata
 updates during a fade, gapless boundaries and the optional separate-track pause. A synthetic
-225-track HTTP fixture checks automatic page loading, bounded visible rows, connection retry,
-ordering without duplicates and restoring a deep scroll position after search. Transport checks
+225-track HTTP fixture checks a complete collection request, bounded visible rows, cached
+connection retry, ordering without duplicates and restoring a deep scroll position after
+search. A continuous letter-wheel gesture jumps straight to S without another network
+request; ordinary list scrolling updates the selected letter. Transport checks
 cover queue edges, clearing, shuffle, Repeat All and skipping back from a later track.
 A deep album-navigation check verifies exact row/pixel restoration through search and both
-Back controls, with saved pages reused instead of fetched again. A rendered-title check
+Back controls, with saved collections reused instead of fetched again. A rendered-title check
 verifies that a long title reaches its final characters and loops while playback updates run.
+Acquisition checks verify that search results stay visible after adding music, that the main
+status strip refreshes and opens Activity, and that failed requests can be searched again.
+Podcast transport checks exercise legacy Bluetooth skip commands and raw next/previous key
+events, single-episode queues, seeking near the beginning, and separate phone episode navigation.
 
 This is a debug-signed personal build. Store publishing, casting, selectable skins and a compact
 mode are not included. Phone and physical-head-unit testing complement the Android 15 emulator

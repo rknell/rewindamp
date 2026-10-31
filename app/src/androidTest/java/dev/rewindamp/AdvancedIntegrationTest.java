@@ -103,11 +103,12 @@ public class AdvancedIntegrationTest {
         final java.util.concurrent.ExecutorService executor=java.util.concurrent.Executors.newCachedThreadPool();
         final List<Integer> offsets=Collections.synchronizedList(new ArrayList<>());
         final List<String> terms=Collections.synchronizedList(new ArrayList<>());
-        volatile boolean failNext=false,albumCatalog=false;
+        volatile boolean failNext=false,albumCatalog=false,alphabetCatalog=false;
+        final List<String> paths=Collections.synchronizedList(new ArrayList<>());
         PagedLibrary()throws Exception{executor.execute(()->{while(!server.isClosed())try{java.net.Socket socket=server.accept();executor.execute(()->serve(socket));}catch(Exception ignored){}});}
         void serve(java.net.Socket socket){try(socket){
             java.io.BufferedReader reader=new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream(),java.nio.charset.StandardCharsets.UTF_8));String line=reader.readLine();String header;while((header=reader.readLine())!=null&&!header.isEmpty()){}
-            android.net.Uri uri=android.net.Uri.parse("http://localhost"+line.split(" ")[1]);String raw=uri.getQueryParameter("StartIndex");int offset=raw==null?0:Integer.parseInt(raw);offsets.add(offset);
+            android.net.Uri uri=android.net.Uri.parse("http://localhost"+line.split(" ")[1]);paths.add(uri.toString());String raw=uri.getQueryParameter("StartIndex");int offset=raw==null?0:Integer.parseInt(raw);offsets.add(offset);
             boolean failed=failNext;failNext=false;org.json.JSONArray items=new org.json.JSONArray();
             String term=uri.getQueryParameter("SearchTerm");if(term!=null)terms.add(term);
             if(uri.getPath().equals("/Artists")){
@@ -116,7 +117,8 @@ public class AdvancedIntegrationTest {
                 boolean overlap="Overlap Artist".equals(term)||uri.getQueryParameter("ArtistIds")!=null;
                 int total="Overlap Artist".equals(term)&&uri.getQueryParameter("ArtistIds")==null?1:225;
                 boolean album=albumCatalog&&"MusicAlbum".equals(uri.getQueryParameter("IncludeItemTypes"));
-                for(int i=offset;i<Math.min(offset+100,total);i++)items.put(new org.json.JSONObject().put("Id",(album?"album-":"paged-")+i).put("Name",overlap&&i==0?"Overlap Artist":String.format(Locale.US,album?"Album %03d":"Paged %03d",i)).put("Type",album?"MusicAlbum":"Audio"));
+                int limit=uri.getQueryParameter("Limit")==null?total:Integer.parseInt(uri.getQueryParameter("Limit"));
+                for(int i=offset;i<Math.min(offset+limit,total);i++)items.put(new org.json.JSONObject().put("Id",(album?"album-":"paged-")+i).put("Name",alphabetCatalog?String.format(Locale.US,"%c Track %03d",(char)('A'+i/9),i):overlap&&i==0?"Overlap Artist":String.format(Locale.US,album?"Album %03d":"Paged %03d",i)).put("Type",album?"MusicAlbum":"Audio").put("Artists",new org.json.JSONArray().put(overlap?"Overlap Artist":"Fixture Artist")));
             }
             byte[] body=new org.json.JSONObject().put("Items",items).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
             socket.getOutputStream().write(("HTTP/1.1 "+(failed?"503 Unavailable":"200 OK")+"\r\nContent-Type: application/json\r\nContent-Length: "+body.length+"\r\nConnection: close\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));socket.getOutputStream().write(body);
@@ -128,51 +130,71 @@ public class AdvancedIntegrationTest {
         if(view instanceof android.widget.ListView list)return list;
         if(view instanceof android.view.ViewGroup group)for(int i=0;i<group.getChildCount();i++){android.widget.ListView found=findList(group.getChildAt(i));if(found!=null)return found;}return null;
     }
-    @Test public void libraryScrollLoadsAllPagesLazilyAndRetriesWithoutDuplicates()throws Exception{
+    @Test public void libraryLoadsEntireCollectionAndRetriesWithoutDuplicates()throws Exception{
         try(Fixture f=new Fixture();PagedLibrary library=new PagedLibrary()){
             MainActivity activity=(MainActivity)f.activity;android.view.View content=activity.findViewById(android.R.id.content);
             main(()->{try{java.lang.reflect.Field field=MainActivity.class.getDeclaredField("api");field.setAccessible(true);field.set(activity,library.api());activity.navigate("Tracks");}catch(Exception e){throw new RuntimeException(e);}});
-            android.widget.ListView list=read(()->findList(content));await(()->read(()->list.getCount()==101),10);
-            assertEquals(List.of(0),new ArrayList<>(library.offsets));assertNull(read(()->lastText(content,"LOAD MORE")));assertTrue("Only visible rows should be instantiated",read(()->list.getChildCount()<30));
-            library.failNext=true;main(()->list.setSelection(90));await(()->library.offsets.size()==2,10);main(()->list.setSelection(100));await(()->read(()->lastText(content,"RETRY CONNECTION")!=null),10);
-            assertEquals(List.of(0,100),new ArrayList<>(library.offsets));main(()->lastText(content,"RETRY CONNECTION").performClick());await(()->read(()->list.getCount()==201),10);
-            assertTrue("Appending a page must retain the scroll position",read(()->list.getFirstVisiblePosition()>=85));
-            main(()->list.setSelection(190));await(()->read(()->list.getCount()==225),10);
-            main(()->list.setSelection(224));await(()->read(()->lastText(content,"Paged 224")!=null),5);
-            assertEquals(List.of(0,100,100,200),new ArrayList<>(library.offsets));assertTrue(read(()->list.getChildCount()<30));
+            android.widget.ListView list=read(()->findList(content));await(()->read(()->list.getCount()==225),10);
+            assertEquals(List.of(0),new ArrayList<>(library.offsets));assertFalse(library.paths.get(0).contains("Limit="));assertFalse(library.paths.get(0).contains("StartIndex="));
+            assertTrue("Only visible rows should be instantiated",read(()->list.getChildCount()<30));
+            main(()->list.setSelection(224));await(()->read(()->lastText(content,"Paged 224")!=null),5);assertEquals(1,library.offsets.size());
+            library.failNext=true;main(()->activity.load(false));await(()->read(()->list.getCount()==226),10);
+            main(()->list.setSelection(225));await(()->read(()->lastText(content,"RETRY CONNECTION")!=null),5);
+            main(()->lastText(content,"RETRY CONNECTION").performClick());await(()->read(()->list.getCount()==225),10);
             for(int i=0;i<225;i++){final int index=i;assertEquals("paged-"+i,read(()->((Track)list.getAdapter().getItem(index)).id));}
-            main(()->activity.openSearch("Paged"));await(()->read(()->findList(content).getCount()==101),10);main(activity::closeSearch);
-            await(()->read(()->findList(content).getCount()==225&&lastText(content,"Paged 224")!=null),10);
+            main(()->list.setSelectionFromTop(190,-7));await(()->read(()->list.getFirstVisiblePosition()==190),5);
+            main(()->activity.openSearch("Paged"));await(()->read(()->findList(content).getCount()==225),10);int requests=library.offsets.size();main(activity::closeSearch);
+            await(()->read(()->findList(content).getCount()==225&&findList(content).getFirstVisiblePosition()==190),10);assertEquals(requests,library.offsets.size());
+        }
+    }
+    LetterWheel findWheel(android.view.View view){
+        if(view instanceof LetterWheel wheel)return wheel;
+        if(view instanceof android.view.ViewGroup group)for(int i=0;i<group.getChildCount();i++){LetterWheel wheel=findWheel(group.getChildAt(i));if(wheel!=null)return wheel;}return null;
+    }
+    @Test public void letterWheelJumpsToSAndFollowsListWithoutNetworkRequests()throws Exception{
+        try(Fixture f=new Fixture();PagedLibrary library=new PagedLibrary()){
+            library.alphabetCatalog=true;MainActivity activity=(MainActivity)f.activity;android.view.View content=activity.findViewById(android.R.id.content);
+            main(()->{try{java.lang.reflect.Field field=MainActivity.class.getDeclaredField("api");field.setAccessible(true);field.set(activity,library.api());activity.navigate("Tracks");}catch(Exception e){throw new RuntimeException(e);}});
+            android.widget.ListView list=read(()->findList(content));await(()->read(()->list.getCount()==225),10);LetterWheel wheel=read(()->findWheel(content));
+            assertEquals(android.view.View.VISIBLE,(int)read(wheel::getVisibility));
+            // One continuous turn traverses eighteen detents, A through S.
+            main(()->{float y=wheel.getHeight()-8,travel=18*18*context.getResources().getDisplayMetrics().density;long now=android.os.SystemClock.uptimeMillis();
+                android.view.MotionEvent down=android.view.MotionEvent.obtain(now,now,0,20,y,0),move=android.view.MotionEvent.obtain(now,now+200,2,20,y-travel,0),up=android.view.MotionEvent.obtain(now,now+220,1,20,y-travel,0);
+                wheel.dispatchTouchEvent(down);wheel.dispatchTouchEvent(move);wheel.dispatchTouchEvent(up);down.recycle();move.recycle();up.recycle();});
+            await(()->read(()->list.getFirstVisiblePosition()==162),5);assertTrue(read(()->wheel.getContentDescription().toString().contains(", S.")));assertNotNull(read(()->lastText(content,"S Track 162")));assertEquals(1,library.offsets.size());
+            android.graphics.Bitmap screenshot=instrumentation.getUiAutomation().takeScreenshot();try(java.io.FileOutputStream output=new java.io.FileOutputStream(new java.io.File(context.getExternalFilesDir(null),"letter-wheel.png"))){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,output);}screenshot.recycle();
+            try(android.os.ParcelFileDescriptor copy=instrumentation.getUiAutomation().executeShellCommand("cp "+new java.io.File(context.getExternalFilesDir(null),"letter-wheel.png").getAbsolutePath()+" /data/local/tmp/rewindamp-letter-wheel.png");java.io.FileInputStream input=new java.io.FileInputStream(copy.getFileDescriptor())){input.readAllBytes();}
+            main(()->list.setSelectionFromTop(180,0));await(()->read(()->wheel.getContentDescription().toString().contains(", U.")),5);assertEquals(1,library.offsets.size());
+            main(()->activity.navigate("Queue"));assertEquals(android.view.View.GONE,(int)read(wheel::getVisibility));
+            assertEquals("E",LetterWheel.letter("Éclair"));assertEquals("#",LetterWheel.letter("123 song"));
         }
     }
     @Test public void backRestoresDeepAlbumAndSearchPositionsExactly()throws Exception{
         try(Fixture f=new Fixture();PagedLibrary library=new PagedLibrary()){
             library.albumCatalog=true;MainActivity activity=(MainActivity)f.activity;android.view.View content=activity.findViewById(android.R.id.content);
             main(()->{try{java.lang.reflect.Field field=MainActivity.class.getDeclaredField("api");field.setAccessible(true);field.set(activity,library.api());activity.navigate("Albums");}catch(Exception e){throw new RuntimeException(e);}});
-            android.widget.ListView albums=read(()->findList(content));await(()->read(()->albums.getCount()==101),10);
-            main(()->albums.setSelection(90));await(()->read(()->albums.getCount()==201),10);main(()->albums.setSelection(190));await(()->read(()->albums.getCount()==225),10);
+            android.widget.ListView albums=read(()->findList(content));await(()->read(()->albums.getCount()==225),10);
             main(()->albums.setSelectionFromTop(190,-7));await(()->read(()->albums.getFirstVisiblePosition()==190&&albums.getChildAt(0).getTop()==albums.getPaddingTop()-7),5);int albumTop=read(()->albums.getChildAt(0).getTop());
-            main(()->((android.view.View)lastText(content,"Album 190").getParent()).performClick());await(()->read(()->lastText(content,"Paged 000")!=null&&findList(content).getCount()==101),10);
-            android.widget.ListView tracks=read(()->findList(content));main(()->tracks.setSelection(90));await(()->read(()->tracks.getCount()==201),10);main(()->tracks.setSelectionFromTop(140,-11));await(()->read(()->tracks.getFirstVisiblePosition()==140&&tracks.getChildAt(0).getTop()==tracks.getPaddingTop()-11),5);int trackTop=read(()->tracks.getChildAt(0).getTop());
-            main(()->activity.openSearch("Paged"));await(()->read(()->findList(content).getCount()==101),10);int requests=library.offsets.size();
+            main(()->((android.view.View)lastText(content,"Album 190").getParent()).performClick());await(()->read(()->lastText(content,"Paged 000")!=null&&findList(content).getCount()==225),10);
+            android.widget.ListView tracks=read(()->findList(content));main(()->tracks.setSelectionFromTop(140,-11));await(()->read(()->tracks.getFirstVisiblePosition()==140&&tracks.getChildAt(0).getTop()==tracks.getPaddingTop()-11),5);int trackTop=read(()->tracks.getChildAt(0).getTop());
+            main(()->activity.openSearch("Paged"));await(()->read(()->findList(content).getCount()==225),10);int requests=library.offsets.size();
             main(()->lastText(content,"‹ BACK").performClick());try{await(()->read(()->findList(content).getFirstVisiblePosition()==140),5);}catch(AssertionError failure){throw new AssertionError(read(()->"Restored "+activity.captureBrowse()+", rows="+findList(content).getCount()),failure);}
             assertEquals(trackTop,(int)read(()->findList(content).getChildAt(0).getTop()));assertNotNull(read(()->lastText(content,"‹ BACK")));
             main(activity::onBackPressed);await(()->read(()->findList(content).getFirstVisiblePosition()==190),5);
-            assertEquals(albumTop,(int)read(()->findList(content).getChildAt(0).getTop()));assertEquals(225,(int)read(()->findList(content).getCount()));assertEquals("Going back must reuse the loaded pages",requests,library.offsets.size());
+            assertEquals(albumTop,(int)read(()->findList(content).getChildAt(0).getTop()));assertEquals(225,(int)read(()->findList(content).getCount()));assertEquals("Going back must reuse the loaded collection",requests,library.offsets.size());
             main(()->((android.view.View)lastText(content,"Album 190").getParent()).performClick());await(()->read(()->lastText(content,"Paged 000")!=null),10);main(()->lastText(content,"‹ BACK").performClick());
             await(()->read(()->findList(content).getFirstVisiblePosition()==190),5);assertEquals(albumTop,(int)read(()->findList(content).getChildAt(0).getTop()));
         }
     }
-    @Test public void artistAndTitleSearchDebouncesAndPagesWithoutDuplicates()throws Exception{
+    @Test public void artistAndTitleSearchDebouncesAndLoadsAllWithoutDuplicates()throws Exception{
         try(Fixture f=new Fixture();PagedLibrary library=new PagedLibrary()){
             MainActivity activity=(MainActivity)f.activity;android.view.View content=activity.findViewById(android.R.id.content);
             main(()->{try{java.lang.reflect.Field field=MainActivity.class.getDeclaredField("api");field.setAccessible(true);field.set(activity,library.api());activity.openSearch("");}catch(Exception e){throw new RuntimeException(e);}});
             main(()->{android.widget.EditText input=findInput(content);input.setText("O");input.setText("Over");input.setText("Overlap Artist");});
-            android.widget.ListView list=read(()->findList(content));await(()->read(()->list.getCount()==101),10);
+            android.widget.ListView list=read(()->findList(content));await(()->read(()->list.getCount()==225),10);
             assertEquals(List.of("Overlap Artist","Overlap Artist"),new ArrayList<>(library.terms));
             assertNotNull(read(()->lastText(content,"Overlap Artist")));assertNull(read(()->lastText(content,"GO")));
-            main(()->list.setSelection(90));await(()->read(()->list.getCount()==201),10);
-            main(()->list.setSelection(190));await(()->read(()->list.getCount()==225),10);
+
             Set<String> ids=new HashSet<>();for(int i=0;i<225;i++){final int at=i;assertTrue("A title/artist overlap must appear only once",ids.add(read(()->((Track)list.getAdapter().getItem(at)).id)));}
             assertEquals(225,ids.size());assertEquals("paged-224",read(()->((Track)list.getAdapter().getItem(224)).id));
         }
@@ -232,7 +254,7 @@ public class AdvancedIntegrationTest {
     @Test public void dedicatedSearchStaysAboveKeyboardAndAddsWithoutLeaving()throws Exception{
         try(Fixture f=new Fixture()){
             android.view.View content=f.activity.findViewById(android.R.id.content);
-            main(()->findInput(content).performClick());
+            main(()->{assertNull(findInput(content));lastText(content,"Search").performClick();});
             await(()->read(()->lastText(content,"‹ BACK")!=null),5);
             await(()->read(()->content.getRootWindowInsets()!=null&&content.getRootWindowInsets().isVisible(android.view.WindowInsets.Type.ime())),5);
             android.widget.EditText input=read(()->findInput(content));assertTrue(read(input::hasFocus));

@@ -149,6 +149,33 @@ final class JellyfinApi {
         }
         return items(parent!=null?"Audio":switch(section){case "Albums"->"MusicAlbum";case "Playlists"->"Playlist";default->"Audio";},search,parent,start);
     }
+    /** Phone browsing fetches the complete view once; scrolling never performs network I/O. */
+    List<Track> browseAll(String section,String search,String parent,String parentType)throws Exception {
+        String fields="&Fields=Artists,Album,RunTimeTicks,PrimaryImageAspectRatio&EnableUserData=true";
+        if(parent!=null&&parentType.equals("Playlist"))return parse(request("GET","/Playlists/"+Uri.encode(parent)+"/Items?UserId="+userId+fields,null));
+        String path="/Users/"+userId+"/Items?Recursive=true"+fields;
+        if(parent==null&&section.equals("Tracks")&&!search.isBlank()){
+            String term=Uri.encode(search.trim());
+            java.util.LinkedHashMap<String,Track> matches=new java.util.LinkedHashMap<>();
+            for(Track track:parse(request("GET",path+"&IncludeItemTypes=Audio&SortBy=SortName&SearchTerm="+term,null)))matches.put(track.id,track);
+            List<Track> artists=parse(request("GET","/Artists?UserId="+userId+"&Recursive=true&IncludeItemTypes=Audio&SearchTerm="+term,null));
+            if(!artists.isEmpty()){
+                StringBuilder ids=new StringBuilder();for(Track artist:artists){if(ids.length()>0)ids.append(',');ids.append(artist.id);}
+                if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("Search superseded");
+                for(Track track:parse(request("GET",path+"&IncludeItemTypes=Audio&SortBy=SortName&ArtistIds="+Uri.encode(ids.toString()),null)))matches.putIfAbsent(track.id,track);
+            }
+            return new ArrayList<>(matches.values());
+        }
+        String type=parent!=null?(parentType.equals("MusicArtist")?"MusicAlbum":"Audio"):switch(section){case "Albums"->"MusicAlbum";case "Playlists"->"Playlist";default->"Audio";};
+        path+="&IncludeItemTypes="+type;
+        if(parent!=null)path+=(parentType.equals("MusicArtist")?"&ArtistIds=":"&ParentId=")+Uri.encode(parent);
+        if(!search.isBlank())path+="&SearchTerm="+Uri.encode(search);
+        if(parent==null&&section.equals("Favourites"))path+="&Filters=IsFavorite";
+        String sort=parent!=null?"ParentIndexNumber,IndexNumber,SortName":section.equals("Artists")?"Artist,SortName":section.equals("Albums")?"AlbumArtist,SortName":"SortName";
+        if(parent==null&&section.equals("History"))path+="&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending";
+        else path+="&SortBy="+sort+"&SortOrder=Ascending";
+        return parse(request("GET",path,null));
+    }
     Track item(String id)throws Exception{return Track.from(request("GET","/Users/"+userId+"/Items/"+Uri.encode(id),null));}
     List<Track> allTracks(String id,String type)throws Exception{
         if(type.equals("Playlist"))return playlistItems(id);

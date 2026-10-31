@@ -15,6 +15,25 @@ import java.util.function.Consumer;
 final class Retro {
     static final int BG=0xFF171723,PANEL=0xFF29293D,GREEN=0xFF25F11B,MUTED=0xFF9DA5B2,WHITE=0xFFE1E4E7,LCD=0xFF030604,GOLD=0xFFCEBE7A;
     static final Typeface MONO=Typeface.create("monospace",Typeface.NORMAL);
+    static int dp(Context context,int value){return Math.round(value*context.getResources().getDisplayMetrics().density);}
+    /** Quiet secondary actions keep the metal treatment reserved for primary controls. */
+    static android.widget.TextView action(Context context,String label,Runnable run){
+        android.widget.TextView view=new android.widget.TextView(context);view.setText(label);view.setTextSize(12);
+        view.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));view.setTextColor(GOLD);
+        view.setGravity(label.startsWith("‹")?android.view.Gravity.START|android.view.Gravity.CENTER_VERTICAL:android.view.Gravity.CENTER);view.setPadding(dp(context,12),0,dp(context,12),0);
+        view.setMinHeight(dp(context,48));view.setContentDescription(label);view.setOnClickListener(v->run.run());
+        android.util.TypedValue value=new android.util.TypedValue();context.getTheme().resolveAttribute(android.R.attr.selectableItemBackground,value,true);view.setBackgroundResource(value.resourceId);
+        return view;
+    }
+    static android.widget.TextView heading(Context context,String title,String subtitle){
+        android.widget.TextView view=new android.widget.TextView(context);
+        android.text.SpannableString label=new android.text.SpannableString(title+"\n"+subtitle);
+        label.setSpan(new android.text.style.AbsoluteSizeSpan(24,true),0,title.length(),0);
+        label.setSpan(new android.text.style.ForegroundColorSpan(WHITE),0,title.length(),0);
+        view.setText(label);view.setTextSize(13);view.setTextColor(MUTED);view.setTypeface(Typeface.create("sans-serif",Typeface.NORMAL));
+        view.setLineSpacing(dp(context,5),1);view.setPadding(dp(context,8),dp(context,12),dp(context,8),dp(context,16));return view;
+    }
+    static void divider(android.widget.LinearLayout parent){View line=new View(parent.getContext());line.setBackgroundColor(0xFF303443);parent.addView(line,new android.widget.LinearLayout.LayoutParams(-1,dp(parent.getContext(),1)));}
     static Drawable bevel(int color,boolean inset){return new Drawable(){final Paint p=new Paint();
         @Override public void draw(Canvas c){Rect b=getBounds();p.setColor(color);c.drawRect(b,p);
             p.setColor(inset?0xFF080812:0xFF77798B);c.drawRect(b.left,b.top,b.right,b.top+2,p);c.drawRect(b.left,b.top,b.left+2,b.bottom,p);
@@ -31,10 +50,32 @@ final class Retro {
         }
         void rail(Canvas c,float left,float right,float h,float d){if(right<left)return;p.setColor(0xFF8F8051);c.drawRect(left,h/2-3*d,right,h/2+3*d,p);p.setColor(0xFFF6EFC2);c.drawRect(left,h/2-3*d,right,h/2-1*d,p);p.setColor(0xFFD4C583);c.drawRect(left,h/2,right,h/2+d,p);}
     }
+    static android.widget.LinearLayout navigationBar(android.app.Activity activity,boolean podcasts){
+        android.widget.LinearLayout bar=new android.widget.LinearLayout(activity);
+        bar.setBackground(bevel(PANEL,false));
+        float density=activity.getResources().getDisplayMetrics().density;
+        for(boolean tab:new boolean[]{false,true}){
+            MetalButton button=new MetalButton(activity,tab?"PODCASTS":"MUSIC");button.setSelected(tab==podcasts);
+            button.setTextColor(tab==podcasts?0xFF0C5615:0xFF283A46);
+            button.setContentDescription((tab?"Podcasts":"Music")+(tab==podcasts?", selected":""));
+            button.setOnClickListener(view->{if(tab==podcasts){if(tab&&activity instanceof PodcastDiscoveryActivity)activity.finish();return;}
+                if(tab)activity.startActivity(new android.content.Intent(activity,PodcastActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));
+                else{activity.startActivity(new android.content.Intent(activity,MainActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP|android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));activity.finish();}
+            });
+            bar.addView(button,new android.widget.LinearLayout.LayoutParams(0,Math.round(48*density),1));
+        }
+        return bar;
+    }
+    static MetalButton settingsButton(Context context,Runnable action){
+        MetalButton button=new MetalButton(context,"").icon("settings");
+        button.setOnClickListener(view->action.run());
+        button.setTooltipText("Settings");
+        return button;
+    }
     static final class MetalButton extends Button {
         final Paint p=new Paint(3);String symbol="";
         MetalButton(Context c,String label){super(c);setAllCaps(false);setText(label);setTextSize(10);setTypeface(Typeface.create("sans-serif-condensed",Typeface.BOLD));setTextColor(0xFF283A46);setGravity(android.view.Gravity.CENTER);setPadding(2,0,2,0);setMinimumWidth(0);setMinWidth(0);setMinimumHeight(0);setMinHeight(0);setBackground(null);}
-        MetalButton icon(String value){symbol=value;setText("");setContentDescription(switch(value){case "previous"->"Previous track";case "next"->"Next track";case "play"->"Play";case "pause"->"Pause";case "stop"->"Stop";default->"Browse music";});return this;}
+        MetalButton icon(String value){if(symbol.equals(value))return this;symbol=value;invalidate();setText("");setContentDescription(switch(value){case "previous"->"Previous track";case "next"->"Next track";case "play"->"Play";case "pause"->"Pause";case "stop"->"Stop";case "settings"->"Settings";case "back15"->"Jump back 15 seconds";case "forward30"->"Jump forward 30 seconds";case "edit"->"Edit subscription";default->"Browse music";});return this;}
         @Override protected void onDraw(Canvas c){float d=getResources().getDisplayMetrics().density;float l=2*d,t=Math.max(2*d,(getHeight()-30*d)/2),r=getWidth()-2*d,b=getHeight()-t;
             p.setShader(new LinearGradient(0,t,0,b,new int[]{0xFFF1F5F5,0xFFA9BBC5,0xFFCCD7DC},null,Shader.TileMode.CLAMP));c.drawRect(l,t,r,b,p);p.setShader(null);
             p.setColor(isPressed()?0xFF596E7D:0xFFF3FCFD);c.drawRect(l,t,r,t+2*d,p);c.drawRect(l,t,l+2*d,b,p);p.setColor(0xFF546775);c.drawRect(l,b-2*d,r,b,p);c.drawRect(r-2*d,t,r,b,p);
@@ -49,6 +90,26 @@ final class Retro {
             case "next"->{triangle(c,x-1,y,false);c.drawRect(x+5,y-8,x+8,y+8,p);}
             case "pause"->{c.drawRect(x-6,y-8,x-2,y+8,p);c.drawRect(x+2,y-8,x+6,y+8,p);}
             case "stop"->c.drawRect(x-6,y-6,x+6,y+6,p);
+            case "sleep"->{Path moon=new Path();moon.moveTo(x+4,y-9);moon.cubicTo(x-12,y-10,x-12,y+10,x+4,y+9);moon.cubicTo(x-4,y+6,x-4,y-6,x+4,y-9);c.drawPath(moon,p);}
+            case "edit"->{
+                c.save();c.rotate(-40,x,y);c.drawRect(x-2,y-8,x+2,y+5,p);
+                Path tip=new Path();tip.moveTo(x-2,y+6);tip.lineTo(x+2,y+6);tip.lineTo(x,y+10);tip.close();c.drawPath(tip,p);c.restore();
+            }
+            case "back15","forward30"->{
+                boolean back=symbol.equals("back15");p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.6f);
+                c.drawArc(x-9,y-9,x+9,y+9,back?210:330,240,false,p);p.setStyle(Paint.Style.FILL);
+                Path arrow=new Path();float edge=back?x-9:x+9;arrow.moveTo(edge,y-9);arrow.lineTo(edge+(back?5:-5),y-8);arrow.lineTo(edge,y-3);arrow.close();c.drawPath(arrow,p);
+                p.setTypeface(Typeface.create("sans-serif-condensed",Typeface.BOLD));p.setTextSize(9);p.setTextAlign(Paint.Align.CENTER);c.drawText(back?"15":"30",x,y+3,p);p.setTextAlign(Paint.Align.LEFT);
+            }
+            case "settings"->{
+                Path cog=new Path();cog.setFillType(Path.FillType.EVEN_ODD);
+                for(int i=0;i<32;i++){
+                    double angle=Math.PI*2*i/32-Math.PI/2;float radius=(i%4==1||i%4==2)?10:7.5f;
+                    float px=x+(float)Math.cos(angle)*radius,py=y+(float)Math.sin(angle)*radius;
+                    if(i==0)cog.moveTo(px,py);else cog.lineTo(px,py);
+                }
+                cog.close();cog.addCircle(x,y,3.5f,Path.Direction.CW);c.drawPath(cog,p);
+            }
             default->{Path path=new Path();path.moveTo(x,y-7);path.lineTo(x-7,y+3);path.lineTo(x+7,y+3);path.close();c.drawPath(path,p);c.drawRect(x-7,y+5,x+7,y+8,p);}
         }}
     }
