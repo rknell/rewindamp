@@ -144,7 +144,13 @@ jobs:
           if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > /tmp/is-draft 2>/dev/null; then
             test "$(cat /tmp/is-draft)" = true
           else
-            gh release create "$RELEASE_TAG" --target "$RELEASE_SHA" --draft --title "Rewindamp $RELEASE_VERSION" --notes-file "docs/releases/$RELEASE_VERSION.md"
+            # Create the tag separately; target_commitish can make release creation
+            # fail for workflow tokens even when the correct tag already exists.
+            if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" > /dev/null 2>&1; then
+              gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$RELEASE_SHA" > /dev/null
+            fi
+            test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)" = "$RELEASE_SHA"
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Rewindamp $RELEASE_VERSION" --notes-file "docs/releases/$RELEASE_VERSION.md"
           fi
           gh release upload "$RELEASE_TAG" release-assets/* --clobber
           gh release view "$RELEASE_TAG" --json assets > /tmp/release-assets.json
