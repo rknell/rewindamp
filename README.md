@@ -43,7 +43,7 @@ Android stores an encrypted session token rather than the password. Searches use
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Local development builds are **0.4.10**.
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.11**.
 Music and podcast decks share a horizontal metal destination wheel for Music / Podcasts /
 Queue, including their connection screens. Dragging highlights each newly selected
 destination in green and gives a haptic tick at every detent, like the vertical letter
@@ -320,7 +320,11 @@ sync time. Pending sync work needs the app/service to run; it is not a separate 
 
 ## Android Auto
 
-The exported MediaLibraryService exposes Tracks, Albums, Artists, Playlists, Favourites and
+A single Rewindamp entry opens Music and Podcasts. Reconnecting uses the last audio actually
+played, including the saved podcast position and speed. Browsing a different deck does not
+change that choice. Podcast car skips seek within the episode.
+
+The exported car MediaLibraryService exposes Tracks, Albums, Artists, Playlists, Favourites and
 Downloaded music to Android Auto, along with search, voice selection, artwork and normal
 transport controls. Sign in on the phone first. Car selections append to the existing queue
 and start the selected entry. Browsing only accepts the app's own UID or trusted system/media

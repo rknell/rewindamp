@@ -81,6 +81,7 @@ public final class PlaybackService extends MediaLibraryService {
         var builder=new ExoPlayer.Builder(this,renderers);if(offline!=null)builder.setMediaSourceFactory(new DefaultMediaSourceFactory(this).setDataSourceFactory(offline.playbackSource()));
         ExoPlayer created=builder.build();owner.set(created);created.setAudioAttributes(attributes,false);created.setHandleAudioBecomingNoisy(true);created.setWakeMode(C.WAKE_MODE_NETWORK);
         created.addListener(new Player.Listener(){
+            @Override public void onIsPlayingChanged(boolean playing){if(playing)LastPlayback.record(PlaybackService.this,false);}
             @Override public void onEvents(Player p,Player.Events events){
                 if(p!=player)return;if(transitions!=null)transitions.onEvents(created,events);AudioDsp.playing=p.isPlaying();
                 if(events.size()==1&&events.contains(Player.EVENT_VOLUME_CHANGED))return;persist();if(reporter!=null){reporter.update(p);sync();}

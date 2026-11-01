@@ -39,3 +39,25 @@ Builds remain debug signed; this process does not convert them to store releases
 The old Jellyamp release uses a different application ID. Current `dev.rewindamp` installs
 separately and does not migrate Jellyamp data. Updates between current Rewindamp releases
 preserve app data when their signer matches.
+
+## GitHub Actions (preferred)
+
+Run **Actions → Publish Android release → Run workflow** on `main` after committing
+an increased versionCode/versionName and `docs/releases/<version>.md`. Pushing a
+matching `v<version>` tag also triggers it. The workflow builds with JDK 17/SDK 35,
+runs lint and isolated emulator car/podcast regression tests, checks the application identity and pinned signing certificate, checks
+that both version fields advance, and verifies downloaded assets before publishing.
+A failed upload can be retried against the same draft; published releases are never
+overwritten. Pull requests and pushes to main run the same checks without access to signing secrets.
+
+The repository's Actions secrets contain `ANDROID_KEYSTORE_BASE64`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`.
+The base64 secret is the existing private keystore (base64 is only transport encoding).
+Only the release workflow restores it into a temporary file; it is never committed
+or uploaded as an artifact. Keep an independent private backup of this key.
+GitHub-hosted builds do not require keys on the development computer.
+
+Repository write access can change a workflow that uses these secrets; give write
+access only to trusted maintainers. Pull-request workflows must never receive the
+signing secrets. These remain debug-signed personal releases with the existing
+certificate, preserving updates for installed Rewindamp copies.

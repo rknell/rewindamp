@@ -28,6 +28,8 @@ else:raise RuntimeError('Synthetic podcast server did not start')
 PY
 ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class="${PODCAST_TEST_CLASSES:-dev.rewindamp.PodcastIntegrationTest,dev.rewindamp.PodcastQueueIntegrationTest}"
 
+if [[ "${PODCAST_CAPTURE_SCREENSHOTS:-true}" == true ]]; then
 for screen in podcasts player search podcast-discovery; do
     "$ANDROID_HOME/platform-tools/adb" pull "/sdcard/Download/rewindamp-$screen.png" "docs/images/$screen.png"
 done
+fi

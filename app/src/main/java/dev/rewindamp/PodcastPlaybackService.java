@@ -48,6 +48,7 @@ public final class PodcastPlaybackService extends MediaLibraryService {
             player.setPlaybackSpeed((float)saved.optDouble("speed",1));
         }
         player.addListener(new Player.Listener(){
+            @Override public void onIsPlayingChanged(boolean playing){if(playing)LastPlayback.record(PodcastPlaybackService.this,true);}
             @Override public void onEvents(Player p,Player.Events events){checkpoint();if(session!=null&&events.contains(Player.EVENT_AVAILABLE_COMMANDS_CHANGED))for(MediaSession.ControllerInfo controller:session.getConnectedControllers())session.setAvailableCommands(controller,MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS,controllerCommands(controller));}
             @Override public void onPositionDiscontinuity(Player.PositionInfo old,Player.PositionInfo next,int reason){if(library!=null&&old.mediaItem!=null&&!old.mediaItem.mediaId.equals(next.mediaItem==null?"":next.mediaItem.mediaId)){
                     library.event(old.mediaItem.mediaId,old.positionMs,reason==Player.DISCONTINUITY_REASON_AUTO_TRANSITION?"played":"progress");
@@ -137,6 +138,10 @@ public final class PodcastPlaybackService extends MediaLibraryService {
                 else{List<JSONObject> episodes=id.equals("phone")?library.downloaded():library.episodes(id.startsWith("feed:")?id.substring(5):null,true,Math.max(0,page)*Math.max(1,Math.min(100,size)));for(JSONObject e:episodes)if(e.optBoolean("downloaded")||library.complete(e.optString("id")))result.add(library.media(e));}
                 int start=(id.equals("podcasts")||id.equals("phone"))?Math.min(result.size(),Math.max(0,page)*Math.max(1,Math.min(100,size))):0;return LibraryResult.ofItemList(result.subList(start,Math.min(result.size(),start+Math.max(1,Math.min(100,size)))),p);
             }catch(Exception e){return LibraryResult.ofError(androidx.media3.session.SessionError.ERROR_IO);}});
+        }
+        @Override public ListenableFuture<LibraryResult<MediaItem>> onGetItem(MediaLibrarySession s,MediaSession.ControllerInfo c,String id){
+            if(library==null||!library.episode(id).has("id"))return Futures.immediateFuture(LibraryResult.ofError(androidx.media3.session.SessionError.ERROR_BAD_VALUE));
+            return Futures.immediateFuture(LibraryResult.ofItem(library.media(library.episode(id)),null));
         }
         @Override public ListenableFuture<List<MediaItem>> onAddMediaItems(MediaSession s,MediaSession.ControllerInfo c,List<MediaItem> items){
             if(library==null)return Futures.immediateFuture(List.of());

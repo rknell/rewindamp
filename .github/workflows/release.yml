@@ -1,0 +1,141 @@
+name: Publish Android release
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install fixture audio tools and SDK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build and lint
+        run: ./gradlew --no-daemon assembleDebug lintDebug
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Isolated car and podcast regression tests
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          PODCAST_TEST_CLASSES: dev.rewindamp.AutoIntegrationTest
+          PODCAST_CAPTURE_SCREENSHOTS: 'false'
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: ./scripts/podcast-integration-test.sh
+  release:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/../release.keystore
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install pinned Android SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Restore private signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+      - name: Build and lint
+        run: ./gradlew --no-daemon assembleDebug lintDebug
+      - name: Verify identity and prepare assets
+        run: |
+          set -euo pipefail
+          version=$(sed -n "s/.*versionName '\([^']*\)'.*/\1/p" app/build.gradle)
+          code=$(sed -n 's/.*versionCode \([0-9]*\).*/\1/p' app/build.gradle)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          tag="v$version"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then test "$GITHUB_REF_NAME" = "$tag"; fi
+          test -f "docs/releases/$version.md"
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          signer=$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          test "$signer" = "$(cat release-signing-cert.sha256)"
+          badging=$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk")
+          [[ "$badging" == *"package: name='dev.rewindamp' versionCode='$code' versionName='$version'"* ]]
+          latest=$(gh release view --json tagName --jq .tagName)
+          python3 - "$version" "$latest" <<'PY'
+          import sys
+          assert tuple(map(int,sys.argv[1].split('.'))) > tuple(map(int,sys.argv[2].removeprefix('v').split('.'))), 'Version must exceed latest release'
+          PY
+          previous_code=$(git show "$latest:app/build.gradle" | sed -n 's/.*versionCode \([0-9]*\).*/\1/p')
+          (( code > previous_code ))
+          if git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            test "$(git rev-list -n 1 "$tag")" = "$GITHUB_SHA"
+          fi
+          mkdir -p release-assets
+          cp "$apk" "release-assets/Rewindamp-$version.apk"
+          (cd release-assets && sha256sum "Rewindamp-$version.apk" > SHA256SUMS)
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+      - name: Upload and verify draft before publication
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > /tmp/is-draft 2>/dev/null; then
+            test "$(cat /tmp/is-draft)" = true
+          else
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --draft --title "Rewindamp $RELEASE_VERSION" --notes-file "docs/releases/$RELEASE_VERSION.md"
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release view "$RELEASE_TAG" --json assets > /tmp/release-assets.json
+          python3 - <<'PY'
+          import json, pathlib
+          root=pathlib.Path('release-assets')
+          assets=json.load(open('/tmp/release-assets.json'))['assets']
+          assert {a['name'] for a in assets} == {p.name for p in root.iterdir()}
+          for a in assets:
+              assert a['state']=='uploaded' and a['size']==(root/a['name']).stat().st_size
+          PY
+          mkdir /tmp/downloaded-release
+          gh release download "$RELEASE_TAG" --dir /tmp/downloaded-release
+          (cd /tmp/downloaded-release && sha256sum --check SHA256SUMS)
+          cmp release-assets/SHA256SUMS /tmp/downloaded-release/SHA256SUMS
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+      - name: Remove private signing key
+        if: always()
+        run: rm -f "$ANDROID_KEYSTORE_PATH"

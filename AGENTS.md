@@ -10,7 +10,9 @@ The owner wants completed Android updates published to GitHub Releases at
 https://github.com/rknell/rewindamp so Obtainium can install them. Publish a new
 version after implementing and validating requested changes; return the release link
 instead of a local APK attachment. This is the owner's standing delivery instruction.
-Follow RELEASING.md. Increase both versionCode and versionName, include release notes,
+Follow RELEASING.md. Prefer the GitHub Actions release workflow; the existing signing key
+is held in encrypted repository secrets so development need not use this build host.
+Increase both versionCode and versionName, include release notes,
 and keep the existing app ID and signing certificate for update compatibility.
 
 The app may be edited inside a larger media-server repository. Publish only the Android

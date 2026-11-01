@@ -7,9 +7,20 @@ android {
         applicationId 'dev.rewindamp'
         minSdk 26
         targetSdk 35
-        versionCode 21
-        versionName '0.4.10'
+        versionCode 22
+        versionName '0.4.11'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    // CI injects the existing certificate; local builds retain the host's debug key.
+    signingConfigs {
+        debug {
+            if (System.getenv('ANDROID_KEYSTORE_PATH')) {
+                storeFile file(System.getenv('ANDROID_KEYSTORE_PATH'))
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
     }
     compileOptions { coreLibraryDesugaringEnabled true; sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
