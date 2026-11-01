@@ -25,6 +25,17 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
           persist-credentials: false
+      - name: Check out portable fixture support from this workflow revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .ci-support
+          sparse-checkout: scripts/fixtures
+          persist-credentials: false
+      - name: Provide isolated server dependency to the selected source
+        run: |
+          mkdir -p server
+          cp .ci-support/scripts/fixtures/server.py server/server.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

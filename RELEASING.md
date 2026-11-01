@@ -50,6 +50,9 @@ runs lint and isolated emulator car/podcast regression tests, checks the applica
 that both version fields advance, and verifies downloaded assets before publishing.
 A failed upload can be retried against the same draft; published releases are never
 overwritten. Pull requests and pushes to main run the same checks without access to signing secrets.
+The code-only podcast fixture is bundled under `scripts/fixtures`; CI uses the fixture
+from its own workflow revision when testing a selected source tag. No external server
+checkout, production data or private server access is required.
 
 The repository's Actions secrets contain `ANDROID_KEYSTORE_BASE64`,
 `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`.

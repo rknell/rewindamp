@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 server_root=Path(__file__).resolve().parents[1]/'server'
 if not server_root.is_dir():server_root=Path(__file__).resolve().parents[2]/'rewindamp-server'
+if not server_root.is_dir():server_root=Path(__file__).resolve().parent/'fixtures'
 sys.path.insert(0,str(server_root))
 from server import Archive, Server
 parser=argparse.ArgumentParser();parser.add_argument('directory',type=Path);parser.add_argument('--port',type=int,default=18097);parser.add_argument('--password-fixture',action='store_true');parser.add_argument('--queue-fixture',action='store_true');args=parser.parse_args()
