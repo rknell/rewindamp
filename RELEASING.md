@@ -43,7 +43,8 @@ preserve app data when their signer matches.
 ## GitHub Actions (preferred)
 
 Run **Actions → Publish Android release → Run workflow** on `main` after committing
-an increased versionCode/versionName and `docs/releases/<version>.md`. Pushing a
+an increased versionCode/versionName and `docs/releases/<version>.md`. The source ref
+field defaults to `main`; choose an existing version tag to retry that exact source. Pushing a
 matching `v<version>` tag also triggers it. The workflow builds with JDK 17/SDK 35,
 runs lint and isolated emulator car/podcast regression tests, checks the application identity and pinned signing certificate, checks
 that both version fields advance, and verifies downloaded assets before publishing.
