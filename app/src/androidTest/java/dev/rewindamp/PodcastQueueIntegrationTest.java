@@ -44,6 +44,30 @@ public class PodcastQueueIntegrationTest {
         try{helpers.waitFor(()->{boolean[] ready={false};main(()->{View q=described(activity,"View podcast queue");ready[0]=q instanceof TextView&&((TextView)q).getText().toString().startsWith("QUEUE 1/"+count)&&helpers.find(activity.getWindow().getDecorView(),current)!=null;});return ready[0];});}catch(AssertionError e){StringBuilder values=new StringBuilder();main(()->texts(activity.getWindow().getDecorView(),values));throw new AssertionError(values.toString(),e);}
     }
     void texts(View view,StringBuilder values){if(view instanceof TextView text)values.append(text.getText()).append(" | ");if(view instanceof android.view.ViewGroup group)for(int i=0;i<group.getChildCount();i++)texts(group.getChildAt(i),values);}
+    @Test public void launcherReturnsToPodcastsAndMarkingKeepsScrolledRows()throws Exception{
+        PodcastLibrary library=fixture();PodcastActivity activity=launch();
+        assertEquals("podcasts",context.getSharedPreferences("navigation",0).getString("destination",""));
+        main(activity::finish);instrumentation.waitForIdleSync();
+        var monitor=instrumentation.addMonitor(PodcastActivity.class.getName(),null,false);
+        MainActivity launcher=(MainActivity)instrumentation.startActivitySync(new Intent(context,MainActivity.class).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        PodcastActivity restored=(PodcastActivity)instrumentation.waitForMonitorWithTimeout(monitor,10000);
+        instrumentation.removeMonitor(monitor);assertNotNull("Launcher restores the podcast destination",restored);activities.add(restored);
+        helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=helpers.find(restored.getWindow().getDecorView(),"Queue newest")!=null);return ready[0];});
+        JSONObject selected=episode(library,"Queue newest");
+        var episodesField=PodcastActivity.class.getDeclaredField("episodes");episodesField.setAccessible(true);
+        var rowsField=PodcastActivity.class.getDeclaredField("rows");rowsField.setAccessible(true);
+        @SuppressWarnings("unchecked") java.util.List<JSONObject> episodes=(java.util.List<JSONObject>)episodesField.get(restored);
+        android.widget.LinearLayout rows=(android.widget.LinearLayout)rowsField.get(restored);
+        main(()->{
+            episodes.clear();
+            for(int i=0;i<45;i++)try{episodes.add(i==20?selected:new JSONObject(selected.toString()).put("id","scroll-fixture-"+i).put("title","Synthetic scroll row "+i));}catch(Exception e){throw new RuntimeException(e);}
+            restored.render();
+        });instrumentation.waitForIdleSync();
+        android.widget.ScrollView scroll=(android.widget.ScrollView)rows.getParent();int[] offset={0};View[] retained={null};
+        main(()->{View target=rows.findViewWithTag(selected.optString("id"));scroll.scrollTo(0,target.getTop()-20);offset[0]=scroll.getScrollY();retained[0]=rows.findViewWithTag("scroll-fixture-21");restored.mark(selected,"played");});
+        instrumentation.waitForIdleSync();
+        main(()->{assertTrue("Fixture scrolled away from the top",offset[0]>0);assertNull(rows.findViewWithTag(selected.optString("id")));assertSame("Other rows are retained",retained[0],rows.findViewWithTag("scroll-fixture-21"));assertEquals(offset[0],scroll.getScrollY());restored.finish();launcher.finish();});
+    }
     @Test public void showQueueSkipsPlayedAdvancesAndKeepsTitleStable()throws Exception{
         PodcastLibrary library=fixture();String feed=episode(library,"Queue old").getString("feed_id");library.preference("oldest:"+feed,true);PodcastActivity activity=launch();
         main(()->((Spinner)described(activity,"Podcast show")).setSelection(2));

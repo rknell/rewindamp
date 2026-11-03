@@ -43,11 +43,11 @@ Android stores an encrypted session token rather than the password. Searches use
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Local development builds are **0.4.11**.
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.12**.
 Music and podcast decks share a horizontal metal destination wheel for Music / Podcasts /
 Queue, including their connection screens. Dragging highlights each newly selected
 destination in green and gives a haptic tick at every detent, like the vertical letter
-wheel. Release to open the highlighted destination, or tap either side for one step. Focused search screens use Back to return to the library. Switching tabs leaves playback alone; starting the other kind of audio
+wheel. Release to open the highlighted destination, or tap either side for one step. Focused search screens use Back to return to the library. The selected Music, Podcasts or Queue destination is remembered across app restarts. Marking a podcast played or dismissed hides its row in place without reloading the list or returning to the top. Switching tabs leaves playback alone; starting the other kind of audio
 uses Android audio focus to pause the first player.
 
 The podcast header has a Settings cog. The single transport row is Previous episode,

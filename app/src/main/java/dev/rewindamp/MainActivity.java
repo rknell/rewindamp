@@ -92,7 +92,10 @@ public final class MainActivity extends Activity {
             if(state.containsKey("browseSection"))previousBrowse=new BrowseState(state.getString("browseSection","Tracks"),state.getString("browseQuery",""),state.getString("browseParent"),state.getString("browseType",""),state.getString("browseName",""),state.getInt("browseScroll"),state.getInt("browseTop"));}
         remainingTime=getPreferences(0).getBoolean("remainingTime",false);eqExpanded=getPreferences(0).getBoolean("eqExpanded",true);api=SessionStore.load(this);
         if(api==null)loginScreen();else{offline=OfflineLibrary.get(this,api);store=offline.store;if(searchScreen)searchLayout(false);else mainScreen();connectPlayer();load(false);}
+        boolean restoreDestination=state==null&&Intent.ACTION_MAIN.equals(getIntent().getAction())&&!getIntent().hasExtra("destination");
+        String destination=getSharedPreferences("navigation",0).getString("destination","music");
         handleVoiceSearch(getIntent());handleDestination(getIntent());handler.post(ticker);
+        if(restoreDestination){if("podcasts".equals(destination))startActivity(new Intent(this,PodcastActivity.class));else if("queue".equals(destination))showQueue();}
     }
     private void handleVoiceSearch(Intent intent){
         if(intent!=null&&android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH.equals(intent.getAction())){
@@ -101,7 +104,8 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleVoiceSearch(intent);handleDestination(intent);}
     private void handleDestination(Intent intent){if(intent==null)return;String destination=intent.getStringExtra("destination");if("queue".equals(destination))showQueue();else if("music".equals(destination))showMusic();intent.removeExtra("destination");}
-    @Override protected void onResume(){super.onResume();if(destinationWheel!=null)destinationWheel.select(queue()?2:0);}
+    @Override protected void onResume(){super.onResume();rememberDestination();if(destinationWheel!=null)destinationWheel.select(queue()?2:0);}
+    private void rememberDestination(){getSharedPreferences("navigation",0).edit().putString("destination",queue()?"queue":"music").apply();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("section",section);state.putString("query",query);state.putString("parent",parent);state.putString("parentType",parentType);state.putString("parentName",parentName);state.putBoolean("searchScreen",searchScreen);
         if(musicPage!=null){state.putBundle("musicPage",saveBrowse(musicPage.state()));state.putBoolean("musicSearch",musicSearch);}state.putInt("queueScroll",queueScroll);state.putInt("queueTop",queueTop);
         BrowseState current=captureBrowse();state.putInt("scroll",current.scroll());state.putInt("scrollTop",current.top());
@@ -197,13 +201,13 @@ public final class MainActivity extends Activity {
     void showQueue(){
         if(queue())return;if(api==null&&!demo){if(destinationWheel!=null)destinationWheel.select(0);return;}
         musicPage=capturePage();musicSearch=searchScreen;handler.removeCallbacks(searchDebounce);hideKeyboard();generation++;if(browseTask!=null)browseTask.cancel(true);
-        searchScreen=false;section="Queue";parent=null;query="";selecting=false;selected.clear();restoreScroll=queueScroll;restoreTop=queueTop;mainScreen();load(false);say(libraryStatus());
+        searchScreen=false;section="Queue";rememberDestination();parent=null;query="";selecting=false;selected.clear();restoreScroll=queueScroll;restoreTop=queueTop;mainScreen();load(false);say(libraryStatus());
     }
     void showMusic(){
         if(!queue()){if(destinationWheel!=null)destinationWheel.select(0);return;}
         BrowseState queued=captureBrowse();queueScroll=queued.scroll();queueTop=queued.top();
         BrowsePage page=musicPage;musicPage=null;if(page==null)page=new BrowsePage(new BrowseState("Tracks","",null,"","",0,0),null,false);
-        BrowseState state=page.state();section=state.section();parent=state.parent();parentType=state.parentType();parentName=state.parentName();query=state.query();searchScreen=musicSearch;selecting=false;selected.clear();
+        BrowseState state=page.state();section=state.section();rememberDestination();parent=state.parent();parentType=state.parentType();parentName=state.parentName();query=state.query();searchScreen=musicSearch;selecting=false;selected.clear();
         if(searchScreen)searchLayout(false);else mainScreen();restorePage(page);
     }
     void buildEqualizer(){
