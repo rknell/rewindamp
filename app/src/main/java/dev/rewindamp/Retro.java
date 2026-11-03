@@ -54,9 +54,16 @@ final class Retro {
         int selected=podcasts?1:activity instanceof MainActivity main&&main.queue()?2:0;
         return new DestinationWheel(activity,selected,index->{
             if(activity instanceof MainActivity main){if(index==0){main.showMusic();return;}if(index==2){main.showQueue();return;}}
-            if(index==1){if(podcasts)return;activity.startActivity(new android.content.Intent(activity,PodcastActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));}
-            else{activity.startActivity(new android.content.Intent(activity,MainActivity.class).putExtra("destination",index==2?"queue":"music").addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP|android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP));activity.finish();}
+            if(index==1){if(podcasts)return;openDeck(activity,new android.content.Intent(activity,PodcastActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP),false);}
+            else{openDeck(activity,new android.content.Intent(activity,MainActivity.class).putExtra("destination",index==2?"queue":"music").addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP|android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP),true);}
         });
+    }
+    // Decks are peer destinations, so switching them should not look like pushing a detail page.
+    static void openDeck(android.app.Activity activity,android.content.Intent intent,boolean finishSource){
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        activity.startActivity(intent,android.app.ActivityOptions.makeCustomAnimation(activity,0,0).toBundle());
+        if(finishSource)activity.finish();
+        activity.overridePendingTransition(0,0);
     }
     static MetalButton settingsButton(Context context,Runnable action){
         MetalButton button=new MetalButton(context,"").icon("settings");

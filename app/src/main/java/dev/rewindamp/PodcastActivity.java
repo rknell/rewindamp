@@ -55,8 +55,9 @@ public final class PodcastActivity extends Activity {
     Button icon(String symbol,String label,Runnable action){Retro.MetalButton button=new Retro.MetalButton(this,"").icon(symbol);button.setContentDescription(label);button.setTooltipText(label);button.setOnClickListener(v->action.run());return button;}
     void setLabel(TextView view,CharSequence value){if(!android.text.TextUtils.equals(view.getText(),value))view.setText(value);}
     void rail(String value){root.addView(new Retro.Rail(this,value),new LinearLayout.LayoutParams(-1,dp(24)));}
-    @Override public void onCreate(Bundle state){super.onCreate(state);remainingTime=getPreferences(0).getBoolean("remainingTime",false);api=PodcastApi.load(this);if(api==null)connectScreen();else{library=PodcastLibrary.get(this,api);String savedFeed=library.store.read("podcast-browser").optString("feed");feed=savedFeed.isBlank()?null:savedFeed;screen();connectPlayer();loadFeeds();}handler.post(ticker);}
+    @Override public void onCreate(Bundle state){super.onCreate(state);if(android.os.Build.VERSION.SDK_INT>=34){overrideActivityTransition(OVERRIDE_TRANSITION_OPEN,0,0);overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE,0,0);}remainingTime=getPreferences(0).getBoolean("remainingTime",false);api=PodcastApi.load(this);if(api==null)connectScreen();else{library=PodcastLibrary.get(this,api);String savedFeed=library.store.read("podcast-browser").optString("feed");feed=savedFeed.isBlank()?null:savedFeed;screen();connectPlayer();loadFeeds();}handler.post(ticker);}
     @Override protected void onResume(){super.onResume();getSharedPreferences("navigation",0).edit().putString("destination","podcasts").apply();}
+    @Override public void finish(){super.finish();if(android.os.Build.VERSION.SDK_INT<34)overridePendingTransition(0,0);}
     void base(){
         if(android.os.Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
         root=column();root.setPadding(dp(8),dp(8),dp(8),dp(8));root.setBackground(Retro.bevel(Retro.BG,false));

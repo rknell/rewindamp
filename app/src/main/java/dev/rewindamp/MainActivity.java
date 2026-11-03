@@ -95,7 +95,7 @@ public final class MainActivity extends Activity {
         boolean restoreDestination=state==null&&Intent.ACTION_MAIN.equals(getIntent().getAction())&&!getIntent().hasExtra("destination");
         String destination=getSharedPreferences("navigation",0).getString("destination","music");
         handleVoiceSearch(getIntent());handleDestination(getIntent());handler.post(ticker);
-        if(restoreDestination){if("podcasts".equals(destination))startActivity(new Intent(this,PodcastActivity.class));else if("queue".equals(destination))showQueue();}
+        if(restoreDestination){if("podcasts".equals(destination))Retro.openDeck(this,new Intent(this,PodcastActivity.class),false);else if("queue".equals(destination))showQueue();}
     }
     private void handleVoiceSearch(Intent intent){
         if(intent!=null&&android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH.equals(intent.getAction())){
@@ -143,7 +143,7 @@ public final class MainActivity extends Activity {
             connect.setEnabled(false);error.setText("Connecting…");io.execute(()->{try{JellyfinApi signed=JellyfinApi.login(address,username,password);SessionStore.save(this,signed);handler.post(()->{if(destroyed)return;pass.setText("");api=signed;offline=OfflineLibrary.get(this,api);store=offline.store;demo=false;mainScreen();connectPlayer();load(false);});}catch(Exception ex){handler.post(()->{if(destroyed)return;connect.setEnabled(true);error.setText(message(ex));});}});
         });
         form.addView(connect,new LinearLayout.LayoutParams(-1,dp(48)));gap(form,10);form.addView(error);gap(box,18);
-        box.addView(button("PODCASTS · CONNECT PODCAST SERVER",()->startActivity(new Intent(this,PodcastActivity.class))),new LinearLayout.LayoutParams(-1,dp(48)));gap(box,12);
+        box.addView(button("PODCASTS · CONNECT PODCAST SERVER",()->Retro.openDeck(this,new Intent(this,PodcastActivity.class),false)),new LinearLayout.LayoutParams(-1,dp(48)));gap(box,12);
         box.addView(button("EXPLORE THE DEMO",()->{demo=true;mainScreen();load(false);}),new LinearLayout.LayoutParams(-1,dp(48)));gap(box,18);
         box.addView(text("Use your own Jellyfin account.\nUse HTTPS outside your trusted home network.\n\nA little 1997, wherever you go.",12,Retro.MUTED));
     }
