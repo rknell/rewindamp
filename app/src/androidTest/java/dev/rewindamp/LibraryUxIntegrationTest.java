@@ -74,8 +74,9 @@ public class LibraryUxIntegrationTest {
             h.await(()->h.read(()->b.controller.getMediaItemCount()==1),5);
             assertEquals(0,(int)h.read(()->b.list().getFirstVisiblePosition()));assertNull(h.read(()->h.lastText(b.content(),"ADD ALL")));
             h.main(()->h.lastText(b.content(),"⋮").performClick());h.instrumentation.waitForIdleSync();
-            var options=h.instrumentation.getUiAutomation().getRootInActiveWindow().findAccessibilityNodeInfosByText("Add all to queue");assertFalse(options.isEmpty());
-            var option=options.get(0);while(option!=null&&!option.isClickable())option=option.getParent();assertNotNull(option);assertTrue(option.performAction(AccessibilityNodeInfo.ACTION_CLICK));
+            AccessibilityNodeInfo[] menuOption={null};
+            h.await(()->{var root=h.instrumentation.getUiAutomation().getRootInActiveWindow();if(root==null)return false;var options=root.findAccessibilityNodeInfosByText("Add all to queue");if(options.isEmpty())return false;menuOption[0]=options.get(0);return true;},10);
+            var option=menuOption[0];while(option!=null&&!option.isClickable())option=option.getParent();assertNotNull(option);assertTrue(option.performAction(AccessibilityNodeInfo.ACTION_CLICK));
             h.await(()->h.read(()->b.controller.getMediaItemCount()==226),5);
             assertFalse(h.read(()->b.controller.getPlayWhenReady()));assertEquals(0,(int)h.read(()->b.controller.getCurrentMediaItemIndex()));
             assertEquals(expected.get(4).id,h.read(()->b.controller.getMediaItemAt(0).mediaId));
