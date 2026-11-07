@@ -189,9 +189,10 @@ public final class MainActivity extends Activity {
     void saveQueue(){if(demo){say("Connect to save playlists");return;}List<Track> snapshot=new ArrayList<>(shown);nameDialog("Save queue as playlist","",name->mutate(()->{api.create(name,snapshot);return null;},()->say("Playlist saved to Jellyfin")));}
     void libraryMenu(){
         if(demo){say("Connect to manage your music");return;}
-        List<String> actions=new ArrayList<>();if(section.equals("Playlists")&&parent==null)actions.add("New private playlist");if(playlist()){actions.add("Rename playlist");actions.add("Duplicate playlist");}if(shown.stream().anyMatch(t->t.type.equals("Audio")))actions.add("Download this view to phone");
+        List<String> actions=new ArrayList<>();if(shown.stream().anyMatch(t->t.type.equals("Audio")))actions.add("Add all to queue");if(section.equals("Playlists")&&parent==null)actions.add("New private playlist");if(playlist()){actions.add("Rename playlist");actions.add("Duplicate playlist");}if(shown.stream().anyMatch(t->t.type.equals("Audio")))actions.add("Download this view to phone");
         if(actions.isEmpty()){say("Tap tracks to add them. Hold a track for more actions.");return;}
         new AlertDialog.Builder(this).setTitle("Library actions").setItems(actions.toArray(new String[0]),(d,i)->{switch(actions.get(i)){
+            case "Add all to queue"->enqueue(new ArrayList<>(shown));
             case "New private playlist"->nameDialog("New private playlist","",name->mutate(()->{api.create(name,List.of());return null;},()->load(false)));
             case "Rename playlist"->{String id=parent;nameDialog("Rename playlist",parentName,name->mutate(()->{api.rename(id,name);return null;},()->{parentName=name;load(false);}));}
             case "Duplicate playlist"->{List<Track> snapshot=new ArrayList<>(shown);nameDialog("Duplicate playlist",parentName+" copy",name->mutate(()->{api.create(name,snapshot);return null;},()->say("Private playlist copy created")));}

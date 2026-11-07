@@ -59,7 +59,7 @@ jobs:
       - name: Isolated car and podcast regression tests
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          PODCAST_TEST_CLASSES: dev.rewindamp.AutoIntegrationTest,dev.rewindamp.PodcastQueueIntegrationTest#launcherReturnsToPodcastsAndMarkingKeepsScrolledRows
+          PODCAST_TEST_CLASSES: dev.rewindamp.AutoIntegrationTest,dev.rewindamp.PodcastQueueIntegrationTest#launcherReturnsToPodcastsAndMarkingKeepsScrolledRows,dev.rewindamp.LibraryUxIntegrationTest#playlistMenuAddsAllInOrderWithoutScrollingOrReplacingQueue
           PODCAST_CAPTURE_SCREENSHOTS: 'false'
         with:
           api-level: 35

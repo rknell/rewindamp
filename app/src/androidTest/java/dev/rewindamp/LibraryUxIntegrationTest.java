@@ -65,6 +65,23 @@ public class LibraryUxIntegrationTest {
             assertFalse(h.instrumentation.getUiAutomation().getRootInActiveWindow().findAccessibilityNodeInfosByText("Play next").isEmpty());h.instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
         }
     }
+    @Test public void playlistMenuAddsAllInOrderWithoutScrollingOrReplacingQueue()throws Exception{
+        try(Browser b=new Browser()){
+            b.start();b.ready(226);
+            h.main(()->b.activity.open(new Track("fixture-playlist","Fixture playlist","","","Playlist","",0)));b.ready(226);
+            List<Track> expected=h.read(()->{List<Track> tracks=new ArrayList<>();for(int i=0;i<225;i++)tracks.add((Track)b.list().getAdapter().getItem(i));return tracks;});
+            h.main(()->{b.activity.enqueue(List.of(expected.get(4)));b.controller.pause();});
+            h.await(()->h.read(()->b.controller.getMediaItemCount()==1),5);
+            assertEquals(0,(int)h.read(()->b.list().getFirstVisiblePosition()));assertNull(h.read(()->h.lastText(b.content(),"ADD ALL")));
+            h.main(()->h.lastText(b.content(),"⋮").performClick());h.instrumentation.waitForIdleSync();
+            var options=h.instrumentation.getUiAutomation().getRootInActiveWindow().findAccessibilityNodeInfosByText("Add all to queue");assertFalse(options.isEmpty());
+            var option=options.get(0);while(option!=null&&!option.isClickable())option=option.getParent();assertNotNull(option);assertTrue(option.performAction(AccessibilityNodeInfo.ACTION_CLICK));
+            h.await(()->h.read(()->b.controller.getMediaItemCount()==226),5);
+            assertFalse(h.read(()->b.controller.getPlayWhenReady()));assertEquals(0,(int)h.read(()->b.controller.getCurrentMediaItemIndex()));
+            assertEquals(expected.get(4).id,h.read(()->b.controller.getMediaItemAt(0).mediaId));
+            for(int i=0;i<expected.size();i++){final int index=i;assertEquals(expected.get(i).id,h.read(()->b.controller.getMediaItemAt(index+1).mediaId));}
+        }
+    }
     @Test public void queueAndPodcastDestinationsPreserveBrowseAndSearchPositions()throws Exception{
         try(Browser b=new Browser()){
             b.start();b.ready(226);position(b,140,-9);int top=h.read(()->b.list().getChildAt(0).getTop());

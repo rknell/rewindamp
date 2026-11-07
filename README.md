@@ -43,7 +43,7 @@ Android stores an encrypted session token rather than the password. Searches use
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Local development builds are **0.4.13**.
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.14**.
 Music and podcast decks share a horizontal metal destination wheel for Music / Podcasts /
 Queue, including their connection screens. Dragging highlights each newly selected
 destination in green and gives a haptic tick at every detent, like the vertical letter
@@ -109,7 +109,9 @@ explicit action in the Queue view, so browsing for the next song does not wipe y
 
 - **Tap a library track to append it immediately.** The first entry starts playing;
   subsequent taps keep the current song and position. Adding to a paused queue leaves it paused.
-- **ADD ALL** sits at the very end of the track list and appends the complete view. The entire library is reachable
+- Open the **⋮** menu at the top of a playlist, album or track view and choose
+  **Add all to queue** to append the complete view without scrolling. **ADD ALL** is also
+  available at the very end of the track list. The entire library is reachable
   in one load, with no pagination or further fetches while scrolling. Only visible rows are
   drawn, so large libraries stay light. Search results and playlist entries also load in full.
 - **Turn the metal letter wheel** on the right to jump immediately to a letter, then scroll
