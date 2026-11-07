@@ -66,6 +66,8 @@ public class LibraryUxIntegrationTest {
         }
     }
     @Test public void playlistMenuAddsAllInOrderWithoutScrollingOrReplacingQueue()throws Exception{
+        try(var descriptor=h.instrumentation.getUiAutomation().executeShellCommand("input keyevent KEYCODE_WAKEUP");var input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor)){input.readAllBytes();}
+        try(var descriptor=h.instrumentation.getUiAutomation().executeShellCommand("wm dismiss-keyguard");var input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor)){input.readAllBytes();}
         try(Browser b=new Browser()){
             b.start();b.ready(226);
             h.main(()->b.activity.open(new Track("fixture-playlist","Fixture playlist","","","Playlist","",0)));b.ready(226);

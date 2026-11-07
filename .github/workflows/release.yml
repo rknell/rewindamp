@@ -68,6 +68,14 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: ./scripts/podcast-integration-test.sh
+      - name: Preserve emulator test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-diagnostics
+          path: |
+            app/build/outputs/androidTest-results/
+            app/build/reports/androidTests/
   release:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     needs: verify
