@@ -141,9 +141,8 @@ public class PodcastQueueIntegrationTest {
         PodcastLibrary library=fixture();for(JSONObject e:library.episodes(null,false,0))library.event(e.getString("id"),0,"played");library.sync();PodcastActivity activity=launch();
         helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=helpers.find(activity.getWindow().getDecorView(),"View all podcasts")!=null);return ready[0];});
         main(()->{assertNotNull(described(activity,"Music"));assertNotNull(described(activity,"Podcasts, selected"));assertNotNull(described(activity,"Settings"));helpers.find(activity.getWindow().getDecorView(),"View all podcasts").performClick();});
-        helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=helpers.find(activity.getWindow().getDecorView(),"NO EPISODES YET")!=null);return ready[0];});
-        main(()->{library.preference("show_played",true);activity.load(false);});
         helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=helpers.find(activity.getWindow().getDecorView(),"Queue old")!=null);return ready[0];});
+        assertFalse(library.showPlayed());
         var musicMonitor=instrumentation.addMonitor(MainActivity.class.getName(),null,false);main(()->described(activity,"Music").performClick());
         MainActivity music=(MainActivity)musicMonitor.waitForActivityWithTimeout(10000);assertNotNull(music);instrumentation.removeMonitor(musicMonitor);main(()->assertNotNull(described(music,"Music, selected")));
         var podcastMonitor=instrumentation.addMonitor(PodcastActivity.class.getName(),null,false);main(()->described(music,"Podcasts").performClick());

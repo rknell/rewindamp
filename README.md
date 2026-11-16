@@ -43,11 +43,11 @@ Android stores an encrypted session token rather than the password. Searches use
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Local development builds are **0.4.14**.
+old Jellyamp app data is not automatically migrated. Local development builds are **0.4.15**.
 Music and podcast decks share a horizontal metal destination wheel for Music / Podcasts /
 Queue, including their connection screens. Dragging highlights each newly selected
 destination in green and gives a haptic tick at every detent, like the vertical letter
-wheel. Release to open the highlighted destination, or tap either side for one step. Focused search screens use Back to return to the library. The selected Music, Podcasts or Queue destination is remembered across app restarts. Switching between decks is immediate, with no slide or zoom transition. Marking a podcast played or dismissed hides its row in place without reloading the list or returning to the top. Switching tabs leaves playback alone; starting the other kind of audio
+wheel. Release to open the highlighted destination, or tap either side for one step. Focused search screens use Back to return to the library. The selected Music, Podcasts or Queue destination is remembered across app restarts. Switching between decks is immediate, with no slide or zoom transition. In the unplayed inbox, marking a podcast played or dismissed hides its row in place without reloading the list or returning to the top. Switching tabs leaves playback alone; starting the other kind of audio
 uses Android audio focus to pause the first player.
 
 The podcast header has a Settings cog. The single transport row is Previous episode,
@@ -60,9 +60,11 @@ automatic download rule; it is hidden for All Shows. Empty lists offer **View al
 to browse older episodes outside the download pass.
 
 Choose **Oldest first** or **Newest first** for each show (and separately for All Shows).
-Played and dismissed episodes are hidden and skipped by default; enable **Show played and
-dismissed episodes** in Settings to include them. Starting an episode snapshots all playable
-server/phone-saved episodes in that view into a queue, across catalogue pages. Next follows
+Choose **All available episodes** from the episode filter to browse the full catalogue, including
+played and dismissed episodes. The **Unplayed inbox** hides both. Starting an episode snapshots
+playable server/phone-saved episodes in that view into a queue, across catalogue pages. Enable
+**Show played and dismissed episodes** in Settings to include them in queues built from
+**All available episodes** and **Phone downloads**. Next follows
 that queue's order and selected show; All Shows interleaves shows by publication date.
 Unavailable audio is excluded until downloaded. Browsing a different show does not replace
 a playing queue; starting another episode creates a new queue from that view. Automatic
