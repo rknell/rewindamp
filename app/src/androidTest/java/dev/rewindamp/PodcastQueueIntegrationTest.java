@@ -137,6 +137,17 @@ public class PodcastQueueIntegrationTest {
     }
     boolean positionNear(androidx.media3.session.MediaController controller,long expected){boolean[] near={false};main(()->near[0]=Math.abs(controller.getCurrentPosition()-expected)<1200);return near[0];}
 
+    @Test public void allAvailableEpisodesIncludesPlayedWithSettingOff()throws Exception{
+        PodcastLibrary library=fixture();
+        for(JSONObject episode:library.episodes(null,false,0))library.event(episode.getString("id"),0,"played");
+        library.sync();
+        PodcastActivity activity=launch();
+        helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=helpers.find(activity.getWindow().getDecorView(),"View all podcasts")!=null);return ready[0];});
+        main(()->helpers.find(activity.getWindow().getDecorView(),"View all podcasts").performClick());
+        helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=helpers.find(activity.getWindow().getDecorView(),"Queue old")!=null);return ready[0];});
+        assertFalse(library.showPlayed());
+    }
+
     @Test public void bottomNavigationAndEmptyStateHaveClearActions()throws Exception{
         PodcastLibrary library=fixture();for(JSONObject e:library.episodes(null,false,0))library.event(e.getString("id"),0,"played");library.sync();PodcastActivity activity=launch();
         helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=helpers.find(activity.getWindow().getDecorView(),"View all podcasts")!=null);return ready[0];});
