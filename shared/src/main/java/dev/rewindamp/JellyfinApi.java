@@ -1,6 +1,5 @@
 package dev.rewindamp;
 
-import android.net.Uri;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.IOException;
@@ -14,8 +13,13 @@ import java.util.UUID;
 
 final class JellyfinApi {
     final String server, token, userId, deviceId;
+    private final String device;
     private final java.util.LinkedHashMap<String,TrackSearch> searches=new java.util.LinkedHashMap<>(4,.75f,true);
     JellyfinApi(String server, String token, String userId, String deviceId) {
+        this(server, token, userId, deviceId, "Android");
+    }
+    JellyfinApi(String server, String token, String userId, String deviceId, String device) {
+        this.device = device;
         this.server = server; this.token = token; this.userId = userId; this.deviceId = deviceId;
     }
     static String normalizeServer(String input) {
@@ -27,12 +31,15 @@ final class JellyfinApi {
         } catch (Exception ignored) { throw new IllegalArgumentException("Enter a full server URL, e.g. https://music.example.com"); }
     }
     static JellyfinApi login(String server, String username, String password) throws Exception {
-        JellyfinApi anonymous = new JellyfinApi(normalizeServer(server), "", "", UUID.randomUUID().toString());
+        return login(server, username, password, "Android");
+    }
+    static JellyfinApi login(String server, String username, String password, String device) throws Exception {
+        JellyfinApi anonymous = new JellyfinApi(normalizeServer(server), "", "", UUID.randomUUID().toString(), device);
         JSONObject result = anonymous.request("POST", "/Users/AuthenticateByName", new JSONObject().put("Username", username).put("Pw", password));
-        return new JellyfinApi(anonymous.server, result.getString("AccessToken"), result.getJSONObject("User").getString("Id"), anonymous.deviceId);
+        return new JellyfinApi(anonymous.server, result.getString("AccessToken"), result.getJSONObject("User").getString("Id"), anonymous.deviceId, device);
     }
     String authorization() {
-        return "MediaBrowser Client=\"Rewindamp\", Device=\"Android\", DeviceId=\"" + deviceId + "\", Version=\"0.3.6\"" + (token.isEmpty() ? "" : ", Token=\"" + token + "\"");
+        return "MediaBrowser Client=\"Rewindamp\", Device=\"" + device + "\", DeviceId=\"" + deviceId + "\", Version=\"0.3.6\"" + (token.isEmpty() ? "" : ", Token=\"" + token + "\"");
     }
     JSONObject request(String method, String path, JSONObject body) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(server + path).openConnection();
@@ -68,8 +75,8 @@ final class JellyfinApi {
     private List<Track> items(String type,String search,String parent,int start,String sort) throws Exception {
         String path = "/Users/" + userId + "/Items?Recursive=true&IncludeItemTypes=" + type
             + "&Fields=Artists,Album,RunTimeTicks,PrimaryImageAspectRatio&SortBy="+sort+"&SortOrder=Ascending&Limit=100&StartIndex=" + start;
-        if (!search.isBlank()) path += "&SearchTerm=" + Uri.encode(search);
-        if (parent != null) path += "&ParentId=" + Uri.encode(parent);
+        if (!search.isBlank()) path += "&SearchTerm=" + UrlEncoding.encode(search);
+        if (parent != null) path += "&ParentId=" + UrlEncoding.encode(parent);
         return parse(request("GET", path, null));
     }
     /** Keep independent cursors so an older in-flight query cannot mix with a newer one. */
@@ -100,12 +107,12 @@ final class JellyfinApi {
                 }
                 if(artistIndex>=artists.size()){
                     if(artistsDone)break;
-                    List<Track> page=parse(request("GET","/Artists?UserId="+userId+"&Recursive=true&IncludeItemTypes=Audio&SortBy=SortName&Limit=100&StartIndex="+artistOffset+"&SearchTerm="+Uri.encode(term),null));
+                    List<Track> page=parse(request("GET","/Artists?UserId="+userId+"&Recursive=true&IncludeItemTypes=Audio&SortBy=SortName&Limit=100&StartIndex="+artistOffset+"&SearchTerm="+UrlEncoding.encode(term),null));
                     artists=page;artistIndex=0;artistOffset+=page.size();artistsDone=page.size()<100;
                     if(artists.isEmpty())break;
                 }
                 String artist=artists.get(artistIndex).id;
-                List<Track> page=parse(request("GET","/Users/"+userId+"/Items?Recursive=true&IncludeItemTypes=Audio&ArtistIds="+Uri.encode(artist)+"&Fields=Artists,Album,RunTimeTicks,PrimaryImageAspectRatio&SortBy=SortName&Limit=100&StartIndex="+trackOffset,null));
+                List<Track> page=parse(request("GET","/Users/"+userId+"/Items?Recursive=true&IncludeItemTypes=Audio&ArtistIds="+UrlEncoding.encode(artist)+"&Fields=Artists,Album,RunTimeTicks,PrimaryImageAspectRatio&SortBy=SortName&Limit=100&StartIndex="+trackOffset,null));
                 append(page);trackOffset+=page.size();
                 if(page.size()<100){artistIndex++;trackOffset=0;}
             }
@@ -125,69 +132,69 @@ final class JellyfinApi {
         request("POST", "/Playlists", new JSONObject().put("Name", name).put("Ids", ids).put("UserId", userId).put("MediaType", "Audio").put("IsPublic", false));
     }
     void rename(String id, String name) throws Exception { request("POST", "/Playlists/" + id, new JSONObject().put("Name", name)); }
-    void add(String id, Track track) throws Exception { request("POST", "/Playlists/" + id + "/Items?UserId=" + userId + "&Ids=" + Uri.encode(track.id), null); }
+    void add(String id, Track track) throws Exception { request("POST", "/Playlists/" + id + "/Items?UserId=" + userId + "&Ids=" + UrlEncoding.encode(track.id), null); }
     void remove(String id, Track track) throws Exception {
-        requireEntry(track); request("DELETE", "/Playlists/" + id + "/Items?EntryIds=" + Uri.encode(track.entryId), null);
+        requireEntry(track); request("DELETE", "/Playlists/" + id + "/Items?EntryIds=" + UrlEncoding.encode(track.entryId), null);
     }
     void move(String id, Track track, int index) throws Exception {
-        requireEntry(track); request("POST", "/Playlists/" + id + "/Items/" + Uri.encode(track.entryId) + "/Move/" + index, null);
+        requireEntry(track); request("POST", "/Playlists/" + id + "/Items/" + UrlEncoding.encode(track.entryId) + "/Move/" + index, null);
     }
     private static void requireEntry(Track track) throws IOException { if (track.entryId.isBlank()) throw new IOException("This server did not provide a playlist entry ID. Refresh and try again."); }
     String stream(Track track) {
         return server + "/Audio/" + track.id + "/universal?UserId=" + userId + "&DeviceId=" + deviceId
-            + "&Container=" + Uri.encode("mp3|mp3,aac|aac,m4a|aac,flac|flac,ogg|vorbis|opus,wav|pcm_s16le|pcm_s24le")
+            + "&Container=" + UrlEncoding.encode("mp3|mp3,aac|aac,m4a|aac,flac|flac,ogg|vorbis|opus,wav|pcm_s16le|pcm_s24le")
             + "&AudioCodec=mp3&TranscodingContainer=mp3&TranscodingProtocol=http&AudioBitRate=320000&MaxStreamingBitrate=140000000&EnableRedirection=false";
     }
     List<Track> browse(String section,String search,String parent,String parentType,int start) throws Exception {
         if(parent==null&&section.equals("Tracks")&&!search.isBlank())return searchTracks(search.trim(),start);
         if(parent!=null && parentType.equals("Playlist"))return playlistItems(parent);
-        if(parent!=null && parentType.equals("MusicArtist"))return parse(request("GET","/Users/"+userId+"/Items?Recursive=true&IncludeItemTypes=MusicAlbum&ArtistIds="+Uri.encode(parent)+"&Fields=Artists,Album&SortBy=SortName&Limit=100&StartIndex="+start,null));
+        if(parent!=null && parentType.equals("MusicArtist"))return parse(request("GET","/Users/"+userId+"/Items?Recursive=true&IncludeItemTypes=MusicAlbum&ArtistIds="+UrlEncoding.encode(parent)+"&Fields=Artists,Album&SortBy=SortName&Limit=100&StartIndex="+start,null));
         if(section.equals("Artists")&&parent==null)return items("Audio",search,null,start,"Artist,SortName");
         if((section.equals("Favourites")||section.equals("History"))&&parent==null){
             String extra=section.equals("Favourites")?"&Filters=IsFavorite&SortBy=SortName":"&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending";
-            return parse(request("GET","/Users/"+userId+"/Items?Recursive=true&IncludeItemTypes=Audio&Fields=Artists,Album,RunTimeTicks&EnableUserData=true&Limit=100&StartIndex="+start+"&SearchTerm="+Uri.encode(search)+extra,null));
+            return parse(request("GET","/Users/"+userId+"/Items?Recursive=true&IncludeItemTypes=Audio&Fields=Artists,Album,RunTimeTicks&EnableUserData=true&Limit=100&StartIndex="+start+"&SearchTerm="+UrlEncoding.encode(search)+extra,null));
         }
         return items(parent!=null?"Audio":switch(section){case "Albums"->"MusicAlbum";case "Playlists"->"Playlist";default->"Audio";},search,parent,start);
     }
     /** Phone browsing fetches the complete view once; scrolling never performs network I/O. */
     List<Track> browseAll(String section,String search,String parent,String parentType)throws Exception {
         String fields="&Fields=Artists,Album,RunTimeTicks,PrimaryImageAspectRatio&EnableUserData=true";
-        if(parent!=null&&parentType.equals("Playlist"))return parse(request("GET","/Playlists/"+Uri.encode(parent)+"/Items?UserId="+userId+fields,null));
+        if(parent!=null&&parentType.equals("Playlist"))return parse(request("GET","/Playlists/"+UrlEncoding.encode(parent)+"/Items?UserId="+userId+fields,null));
         String path="/Users/"+userId+"/Items?Recursive=true"+fields;
         if(parent==null&&section.equals("Tracks")&&!search.isBlank()){
-            String term=Uri.encode(search.trim());
+            String term=UrlEncoding.encode(search.trim());
             java.util.LinkedHashMap<String,Track> matches=new java.util.LinkedHashMap<>();
             for(Track track:parse(request("GET",path+"&IncludeItemTypes=Audio&SortBy=SortName&SearchTerm="+term,null)))matches.put(track.id,track);
             List<Track> artists=parse(request("GET","/Artists?UserId="+userId+"&Recursive=true&IncludeItemTypes=Audio&SearchTerm="+term,null));
             if(!artists.isEmpty()){
                 StringBuilder ids=new StringBuilder();for(Track artist:artists){if(ids.length()>0)ids.append(',');ids.append(artist.id);}
                 if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("Search superseded");
-                for(Track track:parse(request("GET",path+"&IncludeItemTypes=Audio&SortBy=SortName&ArtistIds="+Uri.encode(ids.toString()),null)))matches.putIfAbsent(track.id,track);
+                for(Track track:parse(request("GET",path+"&IncludeItemTypes=Audio&SortBy=SortName&ArtistIds="+UrlEncoding.encode(ids.toString()),null)))matches.putIfAbsent(track.id,track);
             }
             return new ArrayList<>(matches.values());
         }
         String type=parent!=null?(parentType.equals("MusicArtist")?"MusicAlbum":"Audio"):switch(section){case "Albums"->"MusicAlbum";case "Playlists"->"Playlist";default->"Audio";};
         path+="&IncludeItemTypes="+type;
-        if(parent!=null)path+=(parentType.equals("MusicArtist")?"&ArtistIds=":"&ParentId=")+Uri.encode(parent);
-        if(!search.isBlank())path+="&SearchTerm="+Uri.encode(search);
+        if(parent!=null)path+=(parentType.equals("MusicArtist")?"&ArtistIds=":"&ParentId=")+UrlEncoding.encode(parent);
+        if(!search.isBlank())path+="&SearchTerm="+UrlEncoding.encode(search);
         if(parent==null&&section.equals("Favourites"))path+="&Filters=IsFavorite";
         String sort=parent!=null?"ParentIndexNumber,IndexNumber,SortName":section.equals("Artists")?"Artist,SortName":section.equals("Albums")?"AlbumArtist,SortName":"SortName";
         if(parent==null&&section.equals("History"))path+="&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending";
         else path+="&SortBy="+sort+"&SortOrder=Ascending";
         return parse(request("GET",path,null));
     }
-    Track item(String id)throws Exception{return Track.from(request("GET","/Users/"+userId+"/Items/"+Uri.encode(id),null));}
+    Track item(String id)throws Exception{return Track.from(request("GET","/Users/"+userId+"/Items/"+UrlEncoding.encode(id),null));}
     List<Track> allTracks(String id,String type)throws Exception{
         if(type.equals("Playlist"))return playlistItems(id);
         List<Track> all=new ArrayList<>();for(int start=0;;start+=100){List<Track> page=items("Audio","",id,start);all.addAll(page);if(page.size()<100)return all;}
     }
     void addMany(String id,List<Track> tracks)throws Exception{
         if(tracks.isEmpty())return;StringBuilder ids=new StringBuilder();for(Track track:tracks){if(ids.length()>0)ids.append(',');ids.append(track.id);}
-        request("POST","/Playlists/"+id+"/Items?UserId="+userId+"&Ids="+Uri.encode(ids.toString()),null);
+        request("POST","/Playlists/"+id+"/Items?UserId="+userId+"&Ids="+UrlEncoding.encode(ids.toString()),null);
     }
     void removeMany(String id,List<Track> tracks)throws Exception{
         StringBuilder ids=new StringBuilder();for(Track track:tracks){requireEntry(track);if(ids.length()>0)ids.append(',');ids.append(track.entryId);}
-        if(ids.length()>0)request("DELETE","/Playlists/"+id+"/Items?EntryIds="+Uri.encode(ids.toString()),null);
+        if(ids.length()>0)request("DELETE","/Playlists/"+id+"/Items?EntryIds="+UrlEncoding.encode(ids.toString()),null);
     }
     void restoreEntry(String id,Track track,int index)throws Exception{
         List<Track> before=playlistItems(id);add(id,track);List<Track> after=playlistItems(id);
@@ -197,7 +204,7 @@ final class JellyfinApi {
     }
     void favorite(Track track,boolean value)throws Exception{request(value?"POST":"DELETE","/Users/"+userId+"/FavoriteItems/"+track.id,null);}
     String downloadUrl(Track track){return server+"/Items/"+track.id+"/Download";}
-    String imageUrl(Track track){return track.imageId.isBlank()?"":server+"/Items/"+track.imageId+"/Images/Primary?MaxWidth=400&Quality=85&Tag="+Uri.encode(track.imageTag);}
+    String imageUrl(Track track){return track.imageId.isBlank()?"":server+"/Items/"+track.imageId+"/Images/Primary?MaxWidth=400&Quality=85&Tag="+UrlEncoding.encode(track.imageTag);}
     byte[] image(Track track)throws Exception{
         String url=imageUrl(track);if(url.isBlank())return new byte[0];
         HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(10000);c.setReadTimeout(15000);c.setRequestProperty("Authorization",authorization());

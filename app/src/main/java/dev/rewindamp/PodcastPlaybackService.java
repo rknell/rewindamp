@@ -36,7 +36,7 @@ public final class PodcastPlaybackService extends MediaLibraryService {
     private final com.google.common.util.concurrent.ListeningExecutorService network=MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor());
     private final Runnable tick=new Runnable(){@Override public void run(){checkSleep();if(++ticks%3==0){checkpoint();sync();maintainOffline();}handler.postDelayed(this,1000);}};
     @Override public void onCreate(){
-        super.onCreate();PodcastApi api=PodcastApi.load(this);if(api!=null)library=PodcastLibrary.get(this,api);
+        super.onCreate();PodcastApi api=PodcastSession.load(this);if(api!=null)library=PodcastLibrary.get(this,api);
         var builder=new ExoPlayer.Builder(this).setSeekBackIncrementMs(15000).setSeekForwardIncrementMs(30000);
         if(library!=null)builder.setMediaSourceFactory(new DefaultMediaSourceFactory(this).setDataSourceFactory(library.source()));
         player=builder.build();player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(),true);player.setHandleAudioBecomingNoisy(true);player.setWakeMode(C.WAKE_MODE_NETWORK);

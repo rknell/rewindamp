@@ -57,7 +57,7 @@ public final class PlaybackService extends MediaLibraryService {
             public ExoPlayer current(){return player;}
             public ExoPlayer create(){return createPlayer();}
             public void promote(ExoPlayer next){
-                if(reporter!=null){reporter.update(player);reporter.transition();}player=next;session.setPlayer(next);AudioDsp.playing=next.isPlaying();fetchArtwork(next.getCurrentMediaItem());persist();report();
+                if(reporter!=null){reporter.update(player.getCurrentMediaItem()==null?"":player.getCurrentMediaItem().mediaId,player.isPlaying(),player.getCurrentPosition(),player.isCurrentMediaItemSeekable(),player.getVolume());reporter.transition();}player=next;session.setPlayer(next);AudioDsp.playing=next.isPlaying();fetchArtwork(next.getCurrentMediaItem());persist();report();
             }
             public void blending(boolean active){if(session!=null){var extras=new android.os.Bundle(session.getSessionExtras());extras.putBoolean("crossfading",active);session.setSessionExtras(extras);}}
             public void volume(float value){if(session!=null){var extras=new android.os.Bundle(session.getSessionExtras());extras.putFloat("logical_volume",value);session.setSessionExtras(extras);}}
@@ -84,14 +84,14 @@ public final class PlaybackService extends MediaLibraryService {
             @Override public void onIsPlayingChanged(boolean playing){if(playing)LastPlayback.record(PlaybackService.this,false);}
             @Override public void onEvents(Player p,Player.Events events){
                 if(p!=player)return;if(transitions!=null)transitions.onEvents(created,events);AudioDsp.playing=p.isPlaying();
-                if(events.size()==1&&events.contains(Player.EVENT_VOLUME_CHANGED))return;persist();if(reporter!=null){reporter.update(p);sync();}
+                if(events.size()==1&&events.contains(Player.EVENT_VOLUME_CHANGED))return;persist();if(reporter!=null){reporter.update(p.getCurrentMediaItem()==null?"":p.getCurrentMediaItem().mediaId,p.isPlaying(),p.getCurrentPosition(),p.isCurrentMediaItemSeekable(),p.getVolume());sync();}
             }
             @Override public void onVolumeChanged(float volume){if(transitions!=null)transitions.onVolume(created,volume);}
             @Override public void onPlayWhenReadyChanged(boolean ready,int reason){if(transitions!=null)transitions.onPlayWhenReady(created,ready,reason);}
             @Override public void onMediaItemTransition(androidx.media3.common.MediaItem item,int reason){if(created!=player)return;if(reporter!=null)reporter.transition();fetchArtwork(item);}
             @Override public void onPlayerError(androidx.media3.common.PlaybackException error){
                 if(created!=player||offline==null||player.getCurrentMediaItem()==null)return;var current=player.getCurrentMediaItem();boolean local=current.mediaMetadata.extras!=null&&current.mediaMetadata.extras.getBoolean("offline");
-                if(!local&&offline.complete(current.mediaId)){int index=player.getCurrentMediaItemIndex();long position=player.getCurrentPosition();player.replaceMediaItem(index,offline.media(Track.fromMedia(current)));player.seekTo(index,position);player.prepare();player.play();}
+                if(!local&&offline.complete(current.mediaId)){int index=player.getCurrentMediaItemIndex();long position=player.getCurrentPosition();player.replaceMediaItem(index,offline.media(MediaTracks.fromMedia(current)));player.seekTo(index,position);player.prepare();player.play();}
             }
             @Override public void onPositionDiscontinuity(Player.PositionInfo oldPosition,Player.PositionInfo newPosition,int reason){if(created==player){if(transitions!=null)transitions.onSeek(created,reason);persist();}}
         });return created;
@@ -101,18 +101,18 @@ public final class PlaybackService extends MediaLibraryService {
         for(int i=0;i<player.getMediaItemCount();i++){
             if(!includeCurrent&&i==player.getCurrentMediaItemIndex())continue;var media=player.getMediaItemAt(i);
             boolean local=media.mediaMetadata.extras!=null&&media.mediaMetadata.extras.getBoolean("offline");
-            if(!local&&offline.complete(media.mediaId))player.replaceMediaItem(i,offline.media(Track.fromMedia(media)));
+            if(!local&&offline.complete(media.mediaId))player.replaceMediaItem(i,offline.media(MediaTracks.fromMedia(media)));
         }
     }
     private void fetchArtwork(androidx.media3.common.MediaItem media){
-        if(media==null||store==null||api==null)return;Track track=Track.fromMedia(media);if(track.imageId.isBlank())return;
+        if(media==null||store==null||api==null)return;Track track=MediaTracks.fromMedia(media);if(track.imageId.isBlank())return;
         art.execute(()->{try{byte[] bytes=store.artwork(track);if(bytes.length==0){bytes=api.image(track);store.artwork(track,bytes);}byte[] image=bytes;if(image.length==0)return;
             handler.post(()->{if(session==null||player.getCurrentMediaItem()==null||!player.getCurrentMediaItem().mediaId.equals(track.id))return;
                 var item=player.getCurrentMediaItem();if(item.mediaMetadata.artworkData==null)player.replaceMediaItem(player.getCurrentMediaItemIndex(),item.buildUpon().setMediaMetadata(item.mediaMetadata.buildUpon().setArtworkData(image,androidx.media3.common.MediaMetadata.PICTURE_TYPE_FRONT_COVER).build()).build());});
         }catch(Exception ignored){}});
     }
     private void persist(){if(store==null||player==null||disk.isShutdown())return;JSONObject snapshot=QueueStore.capture(player);try{if(transitions!=null)snapshot.put("volume",transitions.volume());}catch(org.json.JSONException ignored){}disk.execute(()->store.write("queue",snapshot));}
-    private void report(){if(reporter!=null){reporter.update(player);sync();}}
+    private void report(){if(reporter!=null){reporter.update(player.getCurrentMediaItem()==null?"":player.getCurrentMediaItem().mediaId,player.isPlaying(),player.getCurrentPosition(),player.isCurrentMediaItemSeekable(),player.getVolume());sync();}}
     private void sync(){if(reporter!=null&&syncing.compareAndSet(false,true))network.execute(()->{try{reporter.sync();}finally{syncing.set(false);}});}
     @Override public MediaLibrarySession onGetSession(MediaSession.ControllerInfo controller){return session;}
     @Override public void onDestroy(){

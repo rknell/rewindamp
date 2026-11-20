@@ -213,12 +213,12 @@ public final class MainActivity extends Activity {
     }
     void buildEqualizer(){
         if(eqControls!=null&&eqControls.getParent()!=null)((ViewGroup)eqControls.getParent()).removeView(eqControls);
-        eqControls=column();equalizer.addView(eqControls);DspSettings.Values settings=DspSettings.get();LinearLayout top=row();
-        Button enabled=button(settings.enabled()?"▣ ON":"□ OFF",()->{DspSettings.Values s=DspSettings.get();DspSettings.set(this,!s.enabled(),s.preamp(),s.gains());buildEqualizer();});top.addView(enabled,new LinearLayout.LayoutParams(dp(64),dp(32)));
+        eqControls=column();equalizer.addView(eqControls);Equalizer.Values settings=DspSettings.get();LinearLayout top=row();
+        Button enabled=button(settings.enabled()?"▣ ON":"□ OFF",()->{Equalizer.Values s=DspSettings.get();DspSettings.set(this,!s.enabled(),s.preamp(),s.gains());buildEqualizer();});top.addView(enabled,new LinearLayout.LayoutParams(dp(64),dp(32)));
         TextView scale=text("+12dB  ━━━  -12dB",9,Retro.GOLD);scale.setGravity(Gravity.CENTER);top.addView(scale,new LinearLayout.LayoutParams(0,dp(28),1));top.addView(button("PRESETS",()->new AlertDialog.Builder(this).setTitle("Equalizer presets").setItems(new String[]{"Flat","Rock","Bass","Vocal","Electronic"},(d,i)->{DspSettings.preset(this,new String[]{"Flat","Rock","Bass","Vocal","Electronic"}[i]);buildEqualizer();}).show()),new LinearLayout.LayoutParams(dp(68),dp(32)));eqControls.addView(top);
         LinearLayout bands=row();bands.setGravity(Gravity.TOP);eqControls.addView(bands,new LinearLayout.LayoutParams(-1,dp(94)));
-        weighted(bands,new Retro.BandSlider(this,"PRE",settings.preamp(),value->{DspSettings.Values s=DspSettings.get();DspSettings.set(this,s.enabled(),value,s.gains());}),94);
-        for(int i=0;i<10;i++){int band=i;weighted(bands,new Retro.BandSlider(this,DspSettings.LABELS[i],settings.gains()[i],value->{DspSettings.Values s=DspSettings.get();float[] gains=s.gains().clone();gains[band]=value;DspSettings.set(this,s.enabled(),s.preamp(),gains);}),94);}
+        weighted(bands,new Retro.BandSlider(this,"PRE",settings.preamp(),value->{Equalizer.Values s=DspSettings.get();DspSettings.set(this,s.enabled(),value,s.gains());}),94);
+        for(int i=0;i<10;i++){int band=i;weighted(bands,new Retro.BandSlider(this,Equalizer.LABELS[i],settings.gains()[i],value->{Equalizer.Values s=DspSettings.get();float[] gains=s.gains().clone();gains[band]=value;DspSettings.set(this,s.enabled(),s.preamp(),gains);}),94);}
     }
     void chooseSection(){new AlertDialog.Builder(this).setTitle("Music library").setItems(SECTIONS,(d,i)->navigate(SECTIONS[i])).setNegativeButton("Cancel",null).show();}
     BrowseState captureBrowse(){
@@ -293,7 +293,7 @@ public final class MainActivity extends Activity {
         if(previous!=null){boolean enabled=!demo&&player!=null&&player.hasPreviousMediaItem();previous.setEnabled(enabled);previous.setAlpha(enabled?1f:.35f);}
         if(next!=null){boolean enabled=!demo&&player!=null&&player.hasNextMediaItem();next.setEnabled(enabled);next.setAlpha(enabled?1f:.35f);}
         if(searchScreen||demo||player==null)return;MediaItem current=player.getCurrentMediaItem();
-        if(current!=null){Track t=Track.fromMedia(current);setLabel(title,t.name);setLabel(artist,t.artist.isBlank()?t.album:t.artist);
+        if(current!=null){Track t=MediaTracks.fromMedia(current);setLabel(title,t.name);setLabel(artist,t.artist.isBlank()?t.album:t.artist);
             if(!artId.equals(t.imageId+":"+t.imageTag)){artId=t.imageId+":"+t.imageTag;artwork.show(cover,t,api,store);}
         }else{setLabel(title,"READY WHEN YOU ARE");setLabel(artist,"TAP TRACKS TO QUEUE");}
         setLabel(audioInfo,player.getSessionExtras().getBoolean("crossfading")?"CROSSFADE":AudioDsp.sampleRate>0?String.format(Locale.US,"%d kHz · %s",AudioDsp.sampleRate/1000,AudioDsp.channels==1?"MONO":"STEREO"):"JELLYFIN AUDIO");
@@ -314,7 +314,7 @@ public final class MainActivity extends Activity {
         loadingPage=false;pageFailed=false;morePages=false;
         int request=++generation;String requestedSection=section,requestedParent=parent,requestedType=parentType,requestedQuery=query;
         if(searchScreen&&requestedQuery.isBlank()){shown.clear();render(false);return;}
-        if(queue()){BrowseState position=captureBrowse();shown.clear();if(player!=null)for(int i=0;i<player.getMediaItemCount();i++)shown.add(Track.fromMedia(player.getMediaItemAt(i)));else shown.addAll(pendingQueue);if(restoreScroll<0){restoreScroll=position.scroll();restoreTop=position.top();}render(false);return;}
+        if(queue()){BrowseState position=captureBrowse();shown.clear();if(player!=null)for(int i=0;i<player.getMediaItemCount();i++)shown.add(MediaTracks.fromMedia(player.getMediaItemAt(i)));else shown.addAll(pendingQueue);if(restoreScroll<0){restoreScroll=position.scroll();restoreTop=position.top();}render(false);return;}
         if(demo){shown.clear();shown.addAll(demoItems());sortLibrary();render(false);say(libraryStatus());return;}
         if(section.equals("Offline")){shown.clear();for(Track t:offline.tracks(false))if(matches(t,query))shown.add(t);sortLibrary();render(false);say(libraryStatus());return;}
         String cacheKey=browseKey(requestedSection,requestedParent,requestedQuery);boolean catalog=requestedParent==null&&requestedQuery.isBlank()&&(requestedSection.equals("Tracks")||requestedSection.equals("Artists"));

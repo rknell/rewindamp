@@ -73,9 +73,9 @@ public class MixarrIntegrationTest {
         try(Fixture fixture=new Fixture()){
             JellyfinApi one=new JellyfinApi("http://127.0.0.1","jellyfin-secret","one","device"),two=new JellyfinApi(one.server,one.token,"two","device");String scope=MixarrApi.scope(one);
             try{
-                MixarrApi api=fixture.login();MixarrApi.save(context,scope,api);assertNull(MixarrApi.load(context,MixarrApi.scope(two)));
+                MixarrApi api=fixture.login();MixarrSession.save(context,scope,api);assertNull(MixarrSession.load(context,MixarrApi.scope(two)));
                 String stored=context.getSharedPreferences(scope,0).getAll().toString();assertFalse(stored.contains("fixture-session"));assertFalse(stored.contains("fixture-csrf"));assertFalse(stored.contains("fixture-password"));
-                MixarrApi restored=MixarrApi.load(context,scope);assertNotNull(restored);restored.request("/api/v1/track-requests/search",new JSONObject().put("query","Fridy Rebeca Blac"));assertEquals(0,fixture.adds.get());
+                MixarrApi restored=MixarrSession.load(context,scope);assertNotNull(restored);restored.request("/api/v1/track-requests/search",new JSONObject().put("query","Fridy Rebeca Blac"));assertEquals(0,fixture.adds.get());
                 restored.request("/api/v1/track-requests",new JSONObject().put("token","opaque-selection"));assertEquals(1,fixture.adds.get());
                 try{new MixarrApi("http://example.com","","","");fail("Remote plaintext credentials must be refused");}catch(IllegalArgumentException expected){}
                 try{new MixarrApi("https://user:pass@example.com","","","");fail("URL credentials must be refused");}catch(IllegalArgumentException expected){}
@@ -87,7 +87,7 @@ public class MixarrIntegrationTest {
             JellyfinApi jellyfin=new JellyfinApi("http://127.0.0.1","fixture-jellyfin","fixture-user","device");SessionStore.save(context,jellyfin);String scope=MixarrApi.scope(jellyfin);
             MixarrActivity activity=null;
             try{
-                MixarrApi.save(context,scope,fixture.login());
+                MixarrSession.save(context,scope,fixture.login());
                 activity=(MixarrActivity)instrumentation.startActivitySync(new Intent(context,MixarrActivity.class).putExtra("query","Fixture Song").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));MixarrActivity screen=activity;
                 helpers.await(()->has(screen,"ADD"),10);assertEquals(0,fixture.adds.get());assertTrue(has(screen,"Fixture Album · 3:30"));assertTrue(has(screen,"live"));
                 main(()->{View connection=find(screen.getWindow().getDecorView(),"Connection");assertNotNull(connection);android.graphics.Rect visible=new android.graphics.Rect();assertTrue("Connection action must remain visible",connection.getGlobalVisibleRect(visible)&&visible.width()>=48);});
@@ -111,7 +111,7 @@ public class MixarrIntegrationTest {
         try(Fixture fixture=new Fixture()){
             JellyfinApi jellyfin=new JellyfinApi("http://127.0.0.1","fixture-jellyfin","status-user","device");SessionStore.save(context,jellyfin);String scope=MixarrApi.scope(jellyfin);MainActivity activity=null;
             try{
-                MixarrApi client=fixture.login();MixarrApi.save(context,scope,client);MixarrApi.remember(context,scope,client,new JSONObject().put("track_id",123).put("job_id",456).put("title","Fixture Song").put("artist","Fixture Artist").put("state","queued"));
+                MixarrApi client=fixture.login();MixarrSession.save(context,scope,client);MixarrSession.remember(context,scope,client,new JSONObject().put("track_id",123).put("job_id",456).put("title","Fixture Song").put("artist","Fixture Artist").put("state","queued"));
                 activity=(MainActivity)instrumentation.startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));MainActivity screen=activity;
                 helpers.await(()->helpers.read(()->{View strip=new PodcastIntegrationTest().described(screen.getWindow().getDecorView(),"Open library request activity");return strip instanceof TextView&&strip.isShown()&&((TextView)strip).getText().toString().contains("1 active");}),10);
                 fixture.state="processing";helpers.await(()->helpers.read(()->{TextView strip=(TextView)new PodcastIntegrationTest().described(screen.getWindow().getDecorView(),"Open library request activity");return strip.getText().toString().contains("Downloading audio 50%");}),12);
@@ -124,7 +124,7 @@ public class MixarrIntegrationTest {
         try(Fixture fixture=new Fixture()){
             JellyfinApi jellyfin=new JellyfinApi("http://127.0.0.1","fixture-jellyfin","youtube-user","device");SessionStore.save(context,jellyfin);String scope=MixarrApi.scope(jellyfin);MixarrActivity activity=null;
             try{
-                MixarrApi.save(context,scope,fixture.login());activity=(MixarrActivity)instrumentation.startActivitySync(new Intent(context,MixarrActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));MixarrActivity screen=activity;
+                MixarrSession.save(context,scope,fixture.login());activity=(MixarrActivity)instrumentation.startActivitySync(new Intent(context,MixarrActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));MixarrActivity screen=activity;
                 main(()->{input(screen.getWindow().getDecorView()).setText("https://youtu.be/abcdefghijk");find(screen.getWindow().getDecorView(),"PREVIEW YOUTUBE IMPORT").performClick();});
                 helpers.await(()->has(screen,"IMPORT SELECTED AUDIO"),10);assertEquals(0,fixture.imports.get());assertEquals(0,fixture.searches.get());
                 screenshot("rewindamp-mixarr-youtube-preview.png");
@@ -136,10 +136,10 @@ public class MixarrIntegrationTest {
                 assertEquals("Reviewed Chapter",fixture.selection.get().getJSONArray("items").getJSONObject(0).getString("title"));assertEquals(2,fixture.selection.get().getJSONArray("items").length());
                 fixture.state="processing";helpers.await(()->helpers.read(()->{StringBuilder text=new StringBuilder();collect(activityQueue.getWindow().getDecorView(),text);return text.toString().contains("Fixture Artist · processing");}),12);
                 assertEquals(0,fixture.polls.get());assertTrue(fixture.importPolls.get()>0);
-                MixarrApi saved=MixarrApi.load(context,scope);
-                MixarrApi.remember(context,scope,saved,new JSONObject().put("track_id",123).put("state","available"));
-                MixarrApi.remember(context,scope,saved,new JSONObject().put("import_id","second-batch").put("items",new org.json.JSONArray()));
-                assertEquals(3,saved.history(context,scope).length());
+                MixarrApi saved=MixarrSession.load(context,scope);
+                MixarrSession.remember(context,scope,saved,new JSONObject().put("track_id",123).put("state","available"));
+                MixarrSession.remember(context,scope,saved,new JSONObject().put("import_id","second-batch").put("items",new org.json.JSONArray()));
+                assertEquals(3,MixarrSession.history(context,scope,saved).length());
                 main(activityQueue::finish);main(screen::finish);activity=null;
                 MixarrActivity reopened=(MixarrActivity)instrumentation.startActivitySync(new Intent(context,MixarrActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));activity=reopened;
                 MixarrActivity reopenedQueue=openActivity(reopened);helpers.await(()->has(reopenedQueue,"YouTube import: Fixture Import"),10);assertEquals(1,fixture.imports.get());
@@ -151,7 +151,7 @@ public class MixarrIntegrationTest {
         try(Fixture fixture=new Fixture()){
             JellyfinApi jellyfin=new JellyfinApi("http://127.0.0.1","fixture-jellyfin","playlist-user","device");SessionStore.save(context,jellyfin);String scope=MixarrApi.scope(jellyfin);MixarrActivity activity=null;
             try{
-                String url="https://music.youtube.com/playlist?list=PLfixture12345";MixarrApi.save(context,scope,fixture.login());
+                String url="https://music.youtube.com/playlist?list=PLfixture12345";MixarrSession.save(context,scope,fixture.login());
                 activity=(MixarrActivity)instrumentation.startActivitySync(new Intent(context,MixarrActivity.class).putExtra("query",url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));MixarrActivity screen=activity;
                 helpers.await(()->has(screen,"DOWNLOAD ENTIRE PLAYLIST"),10);Thread.sleep(300);assertEquals(0,fixture.playlists.get());
                 main(()->{find(screen.getWindow().getDecorView(),"DOWNLOAD ENTIRE PLAYLIST").performClick();find(screen.getWindow().getDecorView(),"DOWNLOAD ENTIRE PLAYLIST").performClick();});

@@ -13,7 +13,7 @@ import java.util.List;
 public final class PodcastDownloadService extends DownloadService {
     public PodcastDownloadService(){super(21,1000,"rewindamp-podcasts",R.string.download_channel,0);}
     @Override protected DownloadManager getDownloadManager(){
-        PodcastApi api=PodcastApi.load(this);
+        PodcastApi api=PodcastSession.load(this);
         if(api==null){var manager=PodcastLibrary.get(this,new PodcastApi("https://signed-out.invalid","signed-out")).manager;manager.pauseDownloads();return manager;}
         return PodcastLibrary.get(this,api).manager;
     }

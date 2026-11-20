@@ -1,8 +1,5 @@
 package dev.rewindamp;
 
-import android.content.Context;
-import android.content.SharedPreferences;
-import android.util.Base64;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
@@ -13,8 +10,6 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import javax.crypto.Cipher;
-import javax.crypto.spec.GCMParameterSpec;
 
 /** Mixarr's own cookie + CSRF session. Jellyfin credentials never leave Jellyfin. */
 final class MixarrApi {
@@ -85,25 +80,16 @@ final class MixarrApi {
         byte[] digest=MessageDigest.getInstance("SHA-256").digest((jellyfin.server+"\n"+jellyfin.userId).getBytes(StandardCharsets.UTF_8));
         StringBuilder result=new StringBuilder();for(byte b:digest)result.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return "mixarr-"+result;
     }
-    private static SharedPreferences prefs(Context context,String scope){return context.getSharedPreferences(scope,0);}
-    static void save(Context context,String scope,MixarrApi api)throws Exception {
-        Cipher c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,SessionStore.key());
-        JSONObject value=new JSONObject().put("server",api.server).put("cookie",api.cookie).put("csrf",api.csrf).put("user",api.user);
-        if(!prefs(context,scope).edit().putString("iv",Base64.encodeToString(c.getIV(),Base64.NO_WRAP)).putString("session",Base64.encodeToString(c.doFinal(value.toString().getBytes(StandardCharsets.UTF_8)),Base64.NO_WRAP)).commit())throw new IOException("Could not save connection");
-    }
-    static MixarrApi load(Context context,String scope){try{
-        SharedPreferences p=prefs(context,scope);if(!p.contains("session"))return null;
-        Cipher c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,SessionStore.key(),new GCMParameterSpec(128,Base64.decode(p.getString("iv",""),Base64.NO_WRAP)));
-        JSONObject value=new JSONObject(new String(c.doFinal(Base64.decode(p.getString("session",""),Base64.NO_WRAP)),StandardCharsets.UTF_8));
-        return new MixarrApi(value.getString("server"),value.getString("cookie"),value.getString("csrf"),value.getString("user"));
-    }catch(Exception ignored){return null;}}
-    static void clear(Context context,String scope){prefs(context,scope).edit().remove("iv").remove("session").commit();}
-    private String historyKey(){return "requests:"+server+":"+user;}
-    synchronized JSONArray history(Context context,String scope){try{return new JSONArray(prefs(context,scope).getString(historyKey(),"[]"));}catch(Exception ignored){return new JSONArray();}}
+    String cookie(){return cookie;}
+    String csrf(){return csrf;}
+    String historyKey(){return "requests:"+server+":"+user;}
     private static String historyIdentity(JSONObject row){return row.has("import_id")?"import:"+row.optString("import_id"):"track:"+row.optLong("track_id");}
-    static synchronized void remember(Context context,String scope,MixarrApi api,JSONObject row)throws Exception {
-        JSONArray before=api.history(context,scope),next=new JSONArray();next.put(row);
-        for(int i=0;i<before.length()&&next.length()<30;i++){JSONObject old=before.getJSONObject(i);if(!historyIdentity(old).equals(historyIdentity(row)))next.put(old);}
-        if(!prefs(context,scope).edit().putString(api.historyKey(),next.toString()).commit())throw new IOException("Could not save request status");
+    static JSONArray record(JSONArray before,JSONObject row)throws Exception{
+        JSONArray next=new JSONArray();next.put(row);
+        for(int i=0;i<before.length()&&next.length()<30;i++){
+            JSONObject old=before.getJSONObject(i);
+            if(!historyIdentity(old).equals(historyIdentity(row)))next.put(old);
+        }
+        return next;
     }
 }

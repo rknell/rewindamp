@@ -1,6 +1,7 @@
 plugins { id 'com.android.application' }
 android {
     namespace 'dev.rewindamp'
+    sourceSets.main.java.srcDir("../shared/src/main/java")
     buildFeatures { buildConfig true }
     compileSdk 35
     defaultConfig {

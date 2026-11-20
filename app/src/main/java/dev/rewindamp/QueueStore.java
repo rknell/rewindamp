@@ -10,7 +10,7 @@ import java.util.List;
 final class QueueStore {
     record Snapshot(List<Track> tracks,int index,long position,boolean shuffle,int repeat,float volume){}
     static JSONObject capture(Player player){
-        try{JSONArray tracks=new JSONArray();for(int i=0;i<player.getMediaItemCount();i++)tracks.put(Track.fromMedia(player.getMediaItemAt(i)).json());
+        try{JSONArray tracks=new JSONArray();for(int i=0;i<player.getMediaItemCount();i++)tracks.put(MediaTracks.fromMedia(player.getMediaItemAt(i)).json());
             return new JSONObject().put("Items",tracks).put("index",Math.max(0,player.getCurrentMediaItemIndex())).put("position",Math.max(0,player.getCurrentPosition()))
                 .put("shuffle",player.getShuffleModeEnabled()).put("repeat",player.getRepeatMode()).put("volume",player.getVolume());
         }catch(Exception ignored){return new JSONObject();}

@@ -29,7 +29,7 @@ public class PodcastQueueIntegrationTest {
     PodcastLibrary fixture()throws Exception{
         context.stopService(new Intent(context,PodcastPlaybackService.class));
         helpers.waitFor(()->((android.app.ActivityManager)context.getSystemService(Context.ACTIVITY_SERVICE)).getRunningServices(100).stream().noneMatch(info->info.service.getClassName().equals(PodcastPlaybackService.class.getName())));
-        PodcastApi api=new PodcastApi("http://10.0.2.2:18100","isolated-podcast-fixture-token-00000001");PodcastApi.save(context,api);
+        PodcastApi api=new PodcastApi("http://10.0.2.2:18100","isolated-podcast-fixture-token-00000001");PodcastSession.save(context,api);
         PodcastLibrary[] value={null};main(()->value[0]=PodcastLibrary.get(context,api));PodcastLibrary library=value[0];
         for(JSONObject e:library.episodes(null,false,0)){library.event(e.getString("id"),0,"reset");}library.sync();library.episodes(null,false,0);
         for(JSONObject e:library.episodes(null,false,0))if(e.optString("title").equals("Queue played"))library.event(e.getString("id"),0,"played");library.sync();

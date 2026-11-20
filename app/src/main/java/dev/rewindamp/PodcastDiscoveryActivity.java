@@ -28,7 +28,7 @@ public final class PodcastDiscoveryActivity extends Activity {
     TextView text(String s,int size,int color){TextView v=new TextView(this);v.setText(s);v.setTextSize(size);v.setTextColor(color);v.setTypeface(Retro.MONO);return v;}
     Button button(String label,Runnable action){Button v=new Retro.MetalButton(this,label);v.setOnClickListener(x->action.run());return v;}
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);api=PodcastApi.load(this);if(api==null){finish();return;}
+        super.onCreate(state);api=PodcastSession.load(this);if(api==null){finish();return;}
         if(android.os.Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
         root=column();root.setBackground(Retro.bevel(Retro.BG,false));root.setPadding(dp(8),dp(8),dp(8),dp(8));
         root.setOnApplyWindowInsetsListener((v,insets)->{if(android.os.Build.VERSION.SDK_INT>=30){var p=insets.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.ime());root.setPadding(dp(8)+p.left,dp(8)+p.top,dp(8)+p.right,dp(8)+p.bottom);}else root.setPadding(dp(8)+insets.getSystemWindowInsetLeft(),dp(8)+insets.getSystemWindowInsetTop(),dp(8)+insets.getSystemWindowInsetRight(),dp(8)+insets.getSystemWindowInsetBottom());if(android.os.Build.VERSION.SDK_INT>=30){View intro=root.findViewWithTag("search-intro");if(intro!=null)intro.setVisibility(insets.isVisible(android.view.WindowInsets.Type.ime())?View.GONE:View.VISIBLE);}return insets;});setContentView(root);root.setFocusableInTouchMode(true);root.requestFocus();

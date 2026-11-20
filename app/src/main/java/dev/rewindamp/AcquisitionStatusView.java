@@ -47,18 +47,18 @@ final class AcquisitionStatusView extends TextView {
         if(!attached||!hasWindowFocus()||busy)return;
         JellyfinApi jellyfin=SessionStore.load(getContext());if(jellyfin==null){setVisibility(GONE);return;}
         final String scope;try{scope=MixarrApi.scope(jellyfin);}catch(Exception e){return;}
-        MixarrApi api=MixarrApi.load(getContext(),scope);if(api==null){setVisibility(GONE);return;}
-        setVisibility(VISIBLE);setText(summary(api.history(getContext(),scope)));busy=true;
+        MixarrApi api=MixarrSession.load(getContext(),scope);if(api==null){setVisibility(GONE);return;}
+        setVisibility(VISIBLE);setText(summary(MixarrSession.history(getContext(),scope,api)));busy=true;
         io.execute(()->{try{
-            JSONArray history=api.history(getContext(),scope);
+            JSONArray history=MixarrSession.history(getContext(),scope,api);
             for(int i=0;i<history.length();i++){JSONObject row=history.getJSONObject(i);if(!MixarrActivity.pending(row))continue;
                 JSONObject next;
                 if(row.has("import_id")){next=(JSONObject)api.request("/api/v1/youtube-imports/"+android.net.Uri.encode(row.getString("import_id")),null);next.put("import_id",row.getString("import_id"));if(row.has("skipped"))next.put("skipped",row.getInt("skipped"));}
                 else{if(row.isNull("job_id"))continue;next=(JSONObject)api.request("/api/v1/track-requests/jobs/"+row.getLong("job_id"),null);next.put("title",row.optString("title")).put("artist",row.optString("artist"));}
-                MixarrApi.remember(getContext(),scope,api,next);
+                MixarrSession.remember(getContext(),scope,api,next);
             }
         }catch(Exception ignored){/* Saved state stays visible; try again while foregrounded. */}
-            handler.post(()->{busy=false;if(!attached)return;setText(summary(api.history(getContext(),scope)));if(hasWindowFocus())handler.postDelayed(refresh,5000);});
+            handler.post(()->{busy=false;if(!attached)return;setText(summary(MixarrSession.history(getContext(),scope,api)));if(hasWindowFocus())handler.postDelayed(refresh,5000);});
         });
     }
 }

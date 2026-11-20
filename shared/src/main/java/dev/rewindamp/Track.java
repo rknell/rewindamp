@@ -1,7 +1,5 @@
 package dev.rewindamp;
 
-import android.os.Bundle;
-import androidx.media3.common.MediaItem;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -30,10 +28,6 @@ final class Track {
         return new JSONObject().put("Id",id).put("Name",name).put("Artists",new JSONArray().put(artist)).put("Album",album)
             .put("Type",type).put("PlaylistItemId",entryId).put("RunTimeTicks",duration*10000)
             .put("AlbumId",imageId).put("AlbumPrimaryImageTag",imageTag).put("UserData",new JSONObject().put("IsFavorite",favorite));
-    }
-    static Track fromMedia(MediaItem item) {
-        try {Bundle extra=item.mediaMetadata.extras;if(extra!=null&&extra.containsKey("track"))return from(new JSONObject(extra.getString("track")));}catch(Exception ignored){}
-        return new Track(item.mediaId,String.valueOf(item.mediaMetadata.title),item.mediaMetadata.artist==null?"":item.mediaMetadata.artist.toString(),"","Audio","",0);
     }
     Track withFavorite(boolean value){return new Track(id,name,artist,album,type,entryId,duration,imageId,imageTag,value);}
     /** Hide unfiled/single releases only in album lists; individual tracks remain available. */

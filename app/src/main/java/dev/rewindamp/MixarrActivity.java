@@ -49,7 +49,7 @@ public final class MixarrActivity extends Activity {
         try{scope=MixarrApi.scope(jellyfin);}catch(Exception e){finish();return;}
         initial=state==null?getIntent().getStringExtra("query"):state.getString("query","");if(initial==null)initial="";
         activityMode=state==null?getIntent().getBooleanExtra("activity",false):state.getBoolean("activity");
-        api=MixarrApi.load(this,scope);
+        api=MixarrSession.load(this,scope);
         if(api==null)connect();else{screen();if(!activityMode&&state==null&&!initial.isBlank()&&!MixarrYouTubeImport.isPlaylist(initial))search();}
     }
     void base(String title){
@@ -67,7 +67,7 @@ public final class MixarrActivity extends Activity {
         for(EditText input:new EditText[]{address,username,password}){LinearLayout.LayoutParams fieldSpace=new LinearLayout.LayoutParams(-1,dp(52));fieldSpace.bottomMargin=dp(12);form.addView(input,fieldSpace);}
         TextView error=text("Your password is used only to sign in. Searches never start downloads.",12,Retro.GOLD);form.addView(error);
         if(api!=null)addButton(form,"DISCONNECT MIXARR",()->{
-            MixarrApi previous=api;MixarrApi.clear(this,scope);api=null;connect();
+            MixarrApi previous=api;MixarrSession.clear(this,scope);api=null;connect();
             io.execute(()->{try{previous.request("/api/v1/logout",new JSONObject());}catch(Exception ignored){}});
         });
         Button signIn=button("CONNECT MIXARR",()->{
@@ -77,7 +77,7 @@ public final class MixarrActivity extends Activity {
             // Prevent repeated login taps while the request is running.
             form.getChildAt(form.getChildCount()-1).setEnabled(false);
             io.execute(()->{try{
-                MixarrApi connected=MixarrApi.login(url,name,secret);MixarrApi.save(getApplicationContext(),scope,connected);
+                MixarrApi connected=MixarrApi.login(url,name,secret);MixarrSession.save(getApplicationContext(),scope,connected);
                 handler.post(()->{if(destroyed)return;api=connected;screen();if(!activityMode&&!initial.isBlank()&&!MixarrYouTubeImport.isPlaylist(initial))search();});
             }catch(Exception e){handler.post(()->{if(destroyed)return;error.setText(e instanceof IllegalArgumentException?"Enter a full HTTPS Mixarr address.":MixarrApi.message(e));address.setEnabled(true);username.setEnabled(true);form.getChildAt(form.getChildCount()-1).setEnabled(true);});}});
         });form.addView(signIn,new LinearLayout.LayoutParams(-1,dp(48)));
@@ -121,7 +121,7 @@ public final class MixarrActivity extends Activity {
         ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(query.getWindowToken(),0);
         io.execute(()->{try{
             JSONObject response=(JSONObject)client.request(playlist?"/api/v1/youtube-imports/playlist":"/api/v1/youtube-imports/preview",new JSONObject().put("url",url));
-            if(playlist){response.put("import_id",response.getString("id"));MixarrApi.remember(getApplicationContext(),scope,client,response);}
+            if(playlist){response.put("import_id",response.getString("id"));MixarrSession.remember(getApplicationContext(),scope,client,response);}
             handler.post(()->{submitting.remove("playlist:"+url);if(destroyed||client!=api)return;
                 if(jobs!=null)buildJobs();
                 if(request==generation){status.setText(playlist?"Playlist queued. Tap Library activity to follow progress.":"Review names and chapter times, then import selected audio.");if(!playlist)new MixarrYouTubeImport(this,response,results,body->submitImport(client,request,body));}
@@ -133,7 +133,7 @@ public final class MixarrActivity extends Activity {
         String key="preview:"+request;if(!submitting.add(key))return;
         status.setText("Queuing selected audio…");
         io.execute(()->{try{
-            JSONObject batch=(JSONObject)client.request("/api/v1/youtube-imports",body);batch.put("import_id",batch.getString("id"));MixarrApi.remember(getApplicationContext(),scope,client,batch);
+            JSONObject batch=(JSONObject)client.request("/api/v1/youtube-imports",body);batch.put("import_id",batch.getString("id"));MixarrSession.remember(getApplicationContext(),scope,client,batch);
             handler.post(()->{submitting.remove(key);if(destroyed||client!=api)return;if(jobs!=null)buildJobs();if(request==generation){results.removeAllViews();status.setText("Audio import queued. Tap Library activity to follow progress.");}handler.removeCallbacks(poll);if(resumed)handler.post(poll);});
         }catch(Exception e){handler.post(()->{submitting.remove(key);if(!destroyed&&client==api&&request==generation)status.setText(MixarrApi.message(e)+" You can confirm again to retry.");});}});
     }
@@ -167,13 +167,13 @@ public final class MixarrActivity extends Activity {
         MixarrApi client=api;Context context=getApplicationContext();int request=generation;
         io.execute(()->{try{
             JSONObject response=(JSONObject)client.request("/api/v1/track-requests",new JSONObject().put("token",item.getString("token")));
-            response.put("title",item.optString("title")).put("artist",item.optString("artist"));MixarrApi.remember(context,scope,client,response);
+            response.put("title",item.optString("title")).put("artist",item.optString("artist"));MixarrSession.remember(context,scope,client,response);
             handler.post(()->{if(destroyed||client!=api)return;submitting.remove(id);buildJobs();if(request==generation){status.setText(response.optString("state").equals("available")?"Already available in your server library.":"Request added. Keep searching; progress is in Library activity.");renderResults();}handler.removeCallbacks(poll);if(resumed)handler.post(poll);});
         }catch(Exception e){handler.post(()->{if(destroyed||client!=api)return;submitting.remove(id);if(request==generation){status.setText(MixarrApi.message(e));renderResults();}});}});
     }
     static boolean active(String state){return state.equals("queued")||state.equals("processing")||state.equals("paused");}
     void buildJobs(){
-        jobs.removeAllViews();jobLabels.clear();jobBars.clear();importLabels.clear();JSONArray history=api.history(this,scope);
+        jobs.removeAllViews();jobLabels.clear();jobBars.clear();importLabels.clear();JSONArray history=MixarrSession.history(this,scope,api);
         if(activitySummary!=null)activitySummary.setText(AcquisitionStatusView.summary(history));
         if(!activityMode)return;
         if(history.length()==0){jobs.addView(Retro.heading(this,"Nothing waiting","Music requests will appear here after you add a recording or import audio."));return;}
@@ -198,17 +198,17 @@ public final class MixarrActivity extends Activity {
     }
     void poll(){
         if(!resumed||destroyed||api==null||jobs==null||polling)return;
-        JSONArray history=api.history(this,scope);boolean any=false;for(int i=0;i<history.length();i++)if(pending(history.optJSONObject(i)))any=true;if(!any)return;
+        JSONArray history=MixarrSession.history(this,scope,api);boolean any=false;for(int i=0;i<history.length();i++)if(pending(history.optJSONObject(i)))any=true;if(!any)return;
         polling=true;MixarrApi client=api;Context context=getApplicationContext();
         io.execute(()->{boolean rebuild=false;String error=null;try{
             for(int i=0;i<history.length();i++){JSONObject old=history.getJSONObject(i);
-                if(old.has("import_id")){if(pending(old)){JSONObject batch=(JSONObject)client.request("/api/v1/youtube-imports/"+android.net.Uri.encode(old.getString("import_id")),null);batch.put("import_id",old.getString("import_id"));if(old.has("skipped"))batch.put("skipped",old.getInt("skipped"));MixarrApi.remember(context,scope,client,batch);}continue;}
+                if(old.has("import_id")){if(pending(old)){JSONObject batch=(JSONObject)client.request("/api/v1/youtube-imports/"+android.net.Uri.encode(old.getString("import_id")),null);batch.put("import_id",old.getString("import_id"));if(old.has("skipped"))batch.put("skipped",old.getInt("skipped"));MixarrSession.remember(context,scope,client,batch);}continue;}
                 if(!active(old.optString("state"))||old.isNull("job_id"))continue;
                 JSONObject next=(JSONObject)client.request("/api/v1/track-requests/jobs/"+old.getLong("job_id"),null);next.put("title",old.optString("title")).put("artist",old.optString("artist"));
-                if(!active(next.optString("state")))rebuild=true;MixarrApi.remember(context,scope,client,next);
+                if(!active(next.optString("state")))rebuild=true;MixarrSession.remember(context,scope,client,next);
             }
         }catch(Exception e){error=MixarrApi.message(e);}
-            boolean refresh=rebuild;String failure=error;handler.post(()->{polling=false;if(destroyed||client!=api)return;if(failure!=null)status.setText(failure+" Status will retry automatically.");if(activitySummary!=null)activitySummary.setText(AcquisitionStatusView.summary(api.history(this,scope)));if(refresh)buildJobs();else{JSONArray rows=api.history(this,scope);for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.has("import_id"))updateImport(row);else updateJob(row);}}if(resumed)handler.postDelayed(poll,5000);});
+            boolean refresh=rebuild;String failure=error;handler.post(()->{polling=false;if(destroyed||client!=api)return;if(failure!=null)status.setText(failure+" Status will retry automatically.");if(activitySummary!=null)activitySummary.setText(AcquisitionStatusView.summary(MixarrSession.history(this,scope,api)));if(refresh)buildJobs();else{JSONArray rows=MixarrSession.history(this,scope,api);for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row.has("import_id"))updateImport(row);else updateJob(row);}}if(resumed)handler.postDelayed(poll,5000);});
         });
     }
     @Override protected void onResume(){super.onResume();resumed=true;if(api!=null&&jobs!=null)buildJobs();handler.removeCallbacks(poll);handler.post(poll);}

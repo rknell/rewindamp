@@ -1,6 +1,5 @@
 package dev.rewindamp;
 
-import androidx.media3.common.Player;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.UUID;
@@ -9,29 +8,27 @@ import java.util.UUID;
 final class PlaybackReporter {
     private static final java.util.Set<String> SYNCING=java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final JellyfinApi api;
-    private final LibraryStore store;
+    private final LibraryData store;
     private String item="",playSession="";
     private long position=0;
-    PlaybackReporter(JellyfinApi api,LibraryStore store){this.api=api;this.store=store;}
-    synchronized void update(Player player){
-        String next=player.getCurrentMediaItem()==null?"":player.getCurrentMediaItem().mediaId;
+    PlaybackReporter(JellyfinApi api,LibraryData store){this.api=api;this.store=store;}
+    synchronized void update(String next,boolean playing,long millis,boolean seekable,float volume){
         if(!next.equals(item)&&!item.isBlank())stop();
-        if(player.isPlaying()&&item.isBlank()){
-            item=next;playSession=UUID.randomUUID().toString().replace("-","");position=player.getCurrentPosition();
-            enqueue("/Sessions/Playing",body(player));
-        }else if(!item.isBlank()){
-            position=Math.max(0,player.getCurrentPosition());enqueue("/Sessions/Playing/Progress",body(player));
-        }
+        if(next.isBlank())return;
+        boolean starting=playing&&item.isBlank();
+        if(starting){item=next;playSession=UUID.randomUUID().toString().replace("-","");}
+        if(item.isBlank())return;
+        position=Math.max(0,millis);
+        try{
+            JSONObject body=new JSONObject().put("ItemId",item).put("PlaySessionId",playSession).put("PositionTicks",position*10000)
+                .put("IsPaused",!playing).put("CanSeek",seekable).put("PlayMethod","DirectStream").put("VolumeLevel",Math.round(volume*100));
+            enqueue(starting?"/Sessions/Playing":"/Sessions/Playing/Progress",body);
+        }catch(Exception ignored){}
     }
     synchronized void transition(){if(!item.isBlank())stop();}
     synchronized void stop(){
         try{enqueue("/Sessions/Playing/Stopped",new JSONObject().put("ItemId",item).put("PositionTicks",position*10000).put("PlaySessionId",playSession));}catch(Exception ignored){}
         item="";playSession="";position=0;
-    }
-    private JSONObject body(Player player){
-        try{return new JSONObject().put("ItemId",item).put("PlaySessionId",playSession).put("PositionTicks",Math.max(0,player.getCurrentPosition())*10000)
-            .put("IsPaused",!player.isPlaying()).put("CanSeek",player.isCurrentMediaItemSeekable()).put("PlayMethod","DirectStream").put("VolumeLevel",Math.round(player.getVolume()*100));
-        }catch(Exception e){return new JSONObject();}
     }
     private synchronized void enqueue(String path,JSONObject body){
         if(body.optString("ItemId").isBlank())return;
