@@ -12,9 +12,13 @@ final class AudioDsp extends BaseAudioProcessor {
     static volatile float[] spectrum=new float[28];
     static volatile boolean playing=false;
     static volatile int sampleRate=0,channels=0;
+    static volatile Object spectrumOwner;
     private final java.util.function.BooleanSupplier publish;
-    AudioDsp(){this(()->true);}
-    AudioDsp(java.util.function.BooleanSupplier publish){this.publish=publish;}
+    private final boolean standalone;
+    private long nextSpectrum;
+    AudioDsp(){this(()->true,true);}
+    AudioDsp(java.util.function.BooleanSupplier publish){this(publish,false);}
+    private AudioDsp(java.util.function.BooleanSupplier publish,boolean standalone){this.publish=publish;this.standalone=standalone;}
     private PcmEqualizer equalizer;
     @Override protected AudioFormat onConfigure(AudioFormat format)throws UnhandledAudioFormatException{
         if(format.encoding!=C.ENCODING_PCM_16BIT)throw new UnhandledAudioFormatException(format);
@@ -26,9 +30,10 @@ final class AudioDsp extends BaseAudioProcessor {
     @Override public void queueInput(ByteBuffer input){
         input.order(ByteOrder.nativeOrder());
         ByteBuffer output=replaceOutputBuffer(input.remaining()).order(ByteOrder.nativeOrder());
-        boolean visible=publish.getAsBoolean();
+        long now=System.nanoTime();
+        boolean visible=publish.getAsBoolean()&&(standalone||(spectrumOwner!=null&&now>=nextSpectrum));
         float[] bars=equalizer.process(input,output,DspSettings.get(),visible);
-        if(bars!=null){sampleRate=inputAudioFormat.sampleRate;channels=inputAudioFormat.channelCount;spectrum=bars;}
+        if(bars!=null){nextSpectrum=now+33_000_000L;sampleRate=inputAudioFormat.sampleRate;channels=inputAudioFormat.channelCount;spectrum=bars;}
         input.position(input.limit());output.flip();
     }
 }

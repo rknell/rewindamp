@@ -61,12 +61,11 @@ public final class PodcastDiscoveryActivity extends Activity {
     }
 
     void choosePass(JSONObject item){
-        if(subscribing)return;int[] chosen={0};new AlertDialog.Builder(this).setTitle("Subscribe: "+item.optString("title")).setSingleChoiceItems(new String[]{"Future episodes only","Last 12 months","Last two years","This year (from January 1)","All available episodes (back catalogue)","Manual downloads only"},0,(d,i)->chosen[0]=i).setNegativeButton("Cancel",null).setPositiveButton("Subscribe",(d,w)->subscribe(item,chosen[0])).show();
+        if(subscribing)return;int[] chosen={0};new AlertDialog.Builder(this).setTitle("Subscribe: "+item.optString("title")).setSingleChoiceItems(PodcastPass.LABELS,0,(d,i)->chosen[0]=i).setNegativeButton("Cancel",null).setPositiveButton("Subscribe",(d,w)->subscribe(item,chosen[0])).show();
     }
     void subscribe(JSONObject item,int choice){
         if(subscribing)return;subscribing=true;status.setText("ADDING SUBSCRIPTION…");
-        io.execute(()->{try{String mode=switch(choice){case 1,2->"years";case 3->"since";case 4->"all";case 5->"manual";default->"future";};JSONObject body=new JSONObject().put("title",item.getString("title")).put("url",item.getString("feed_url")).put("mode",mode).put("years",choice==2?2:1).put("only_if_new",true);
-            if(choice==3){java.util.Calendar start=java.util.Calendar.getInstance();start.set(java.util.Calendar.DAY_OF_YEAR,1);start.set(java.util.Calendar.HOUR_OF_DAY,0);start.set(java.util.Calendar.MINUTE,0);start.set(java.util.Calendar.SECOND,0);start.set(java.util.Calendar.MILLISECOND,0);body.put("since",start.getTimeInMillis()/1000);}
+        io.execute(()->{try{JSONObject body=PodcastPass.body(item.getString("title"),item.getString("feed_url"),choice,true);
             JSONObject added=api.request("/api/feeds",body);handler.post(()->{if(destroyed)return;setResult(RESULT_OK,new Intent().putExtra("feed_id",added.optString("id")));finish();});
         }catch(Exception e){handler.post(()->{if(destroyed)return;subscribing=false;status.setText("Could not add this feed. Retry when connected.");});}});
     }

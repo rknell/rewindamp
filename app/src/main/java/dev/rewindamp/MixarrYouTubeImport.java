@@ -1,28 +1,16 @@
 package dev.rewindamp;
 
-import android.net.Uri;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.widget.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 import java.util.function.Consumer;
 
 /** In-memory preview only: signed selections and source references are never persisted. */
 final class MixarrYouTubeImport {
-    static boolean isLink(String value){return value.toLowerCase(Locale.ROOT).startsWith("http:")||value.toLowerCase(Locale.ROOT).startsWith("https:");}
-    static boolean isPlaylist(String value){return "/playlist".equals(Uri.parse(value).getPath());}
-    static boolean validLink(String value){
-        try{
-            Uri uri=Uri.parse(value);String host=uri.getHost();
-            return "https".equalsIgnoreCase(uri.getScheme())&&host!=null&&Set.of("youtube.com","www.youtube.com","music.youtube.com","m.youtube.com","youtu.be","www.youtu.be").contains(host.toLowerCase(Locale.ROOT))&&uri.getUserInfo()==null&&uri.getPort()==-1;
-        }catch(Exception ignored){return false;}
-    }
     private final MixarrActivity activity;
     private final JSONObject preview;
     private final LinearLayout rows;
@@ -73,20 +61,10 @@ final class MixarrYouTubeImport {
         entries.add(new Row(source,selected,title,artist,album,start,end));
     }
     private JSONObject selection()throws Exception {
-        JSONArray selected=new JSONArray();List<double[]> ranges=new ArrayList<>();
-        for(Row row:entries)if(row.selected.isChecked()){
-            String title=row.title.getText().toString().trim(),artist=row.artist.getText().toString().trim();if(title.isEmpty()||artist.isEmpty())throw new IllegalArgumentException();
-            JSONObject item=new JSONObject().put("source_id",row.source.getString("source_id")).put("title",title).put("artist",artist).put("album",row.album.getText().toString().trim());
-            if(playlist)item.put("start",row.source.get("start")).put("end",row.source.opt("end"));
-            else{
-                double start=Double.parseDouble(row.start.getText().toString()),end=Double.parseDouble(row.end.getText().toString()),duration=row.source.getDouble("duration");
-                if(!Double.isFinite(start)||!Double.isFinite(end)||start<0||end<=start||end>duration)throw new IllegalArgumentException();
-                ranges.add(new double[]{start,end});item.put("start",start).put("end",end);
-            }
-            selected.put(item);
-        }
-        if(selected.length()==0||selected.length()>100)throw new IllegalArgumentException();
-        ranges.sort(Comparator.comparingDouble(value->value[0]));for(int i=1;i<ranges.size();i++)if(ranges.get(i-1)[1]>ranges.get(i)[0])throw new IllegalArgumentException();
-        return new JSONObject().put("token",preview.getString("token")).put("items",selected);
+        List<YouTubeSelection.Chapter> chapters=new ArrayList<>();
+        for(Row row:entries)if(row.selected.isChecked())chapters.add(new YouTubeSelection.Chapter(row.source,
+            row.title.getText().toString(),row.artist.getText().toString(),row.album.getText().toString(),
+            playlist?"":row.start.getText().toString(),playlist?"":row.end.getText().toString()));
+        return YouTubeSelection.body(preview,chapters);
     }
 }

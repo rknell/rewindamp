@@ -129,6 +129,7 @@ final class Retro {
     }
     static final class Spectrum extends View {
         final Paint p=new Paint();final float[] bars=new float[28],peaks=new float[28];
+        private final Object spectrumOwner=new Object();
         private boolean playbackActive,frameScheduled;
         private final Runnable frame=()->{frameScheduled=false;if(shouldAnimate()){invalidate();scheduleFrame();}};
         Spectrum(Context c){super(c);setContentDescription("Live music spectrum");}
@@ -139,8 +140,8 @@ final class Retro {
             }else scheduleFrame();
         }
         private boolean shouldAnimate(){return playbackActive&&AudioDsp.playing&&isAttachedToWindow()&&isShown()&&getWindowVisibility()==VISIBLE;}
-        private void scheduleFrame(){if(shouldAnimate()&&!frameScheduled){frameScheduled=true;postDelayed(frame,33);}}
-        private void cancelFrame(){removeCallbacks(frame);frameScheduled=false;}
+        private void scheduleFrame(){if(shouldAnimate()&&!frameScheduled){AudioDsp.spectrumOwner=spectrumOwner;frameScheduled=true;postDelayed(frame,33);}}
+        private void cancelFrame(){if(AudioDsp.spectrumOwner==spectrumOwner)AudioDsp.spectrumOwner=null;removeCallbacks(frame);frameScheduled=false;}
         @Override protected void onDraw(Canvas c){boolean active=shouldAnimate();float[] source=AudioDsp.spectrum;float w=getWidth()/28f,h=getHeight()/18f;
             for(int i=0;i<28;i++){
                 if(active){bars[i]=Math.max(source[i],bars[i]-.045f);peaks[i]=Math.max(bars[i],peaks[i]-.012f);}

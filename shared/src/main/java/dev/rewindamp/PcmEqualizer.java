@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 final class PcmEqualizer {
     private final int rate, channels;
     private final double[][] coefficients=new double[10][5];
-    private double[][] z1,z2;
+    private final double[][] z1,z2;
     private final double[] samples=new double[1024];
     private final double[] window=new double[1024],goertzel=new double[28];
     private int sampleCount=0;
@@ -33,7 +33,10 @@ final class PcmEqualizer {
     float[] process(ByteBuffer input,ByteBuffer output,Equalizer.Values settings,boolean visualize){
         configureBands(settings);
         float[] latest=null;
-        if(!visualize)sampleCount=0;
+        if(!visualize){
+            sampleCount=0;
+            if(!enabled){output.put(input);return null;}
+        }
         while(input.remaining()>=channels*2){
             double mono=0;
             for(int channel=0;channel<channels;channel++){

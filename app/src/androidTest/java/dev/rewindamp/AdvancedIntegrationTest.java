@@ -376,6 +376,26 @@ public class AdvancedIntegrationTest {
             AudioDsp silent=new AudioDsp();silent.configure(new AudioProcessor.AudioFormat(48000,2,C.ENCODING_PCM_16BIT));silent.flush();ByteBuffer zero=ByteBuffer.allocateDirect(8192).order(ByteOrder.nativeOrder());zero.limit(8192);silent.queueInput(zero);silent.getOutput();for(float bar:AudioDsp.spectrum)assertEquals(0,bar,.0001);
         }finally{DspSettings.set(context,false,0,new float[10]);}
     }
+    @Test public void serviceDspBypassesSpectrumWhenTheDisplayIsHidden()throws Exception{
+        Object owner=AudioDsp.spectrumOwner;
+        float[] previous=AudioDsp.spectrum;
+        try{
+            AudioDsp.spectrumOwner=null;
+            AudioDsp dsp=new AudioDsp(()->true);
+            dsp.configure(new AudioProcessor.AudioFormat(48000,2,C.ENCODING_PCM_16BIT));
+            dsp.flush();
+            ByteBuffer signal=ByteBuffer.allocateDirect(8192).order(ByteOrder.nativeOrder());
+            for(int i=0;i<2048;i++)signal.putShort((short)(7000*Math.sin(i*Math.PI/32))).putShort((short)0);
+            signal.flip();
+            dsp.queueInput(signal);
+            dsp.getOutput();
+            assertSame(previous,AudioDsp.spectrum);
+            AudioDsp.spectrumOwner=new Object();
+            signal.rewind();dsp.queueInput(signal);
+            dsp.getOutput();
+            assertNotSame(previous,AudioDsp.spectrum);
+        }finally{AudioDsp.spectrumOwner=owner;AudioDsp.spectrum=previous;}
+    }
     double processedRms(double frequency)throws Exception{
         AudioDsp dsp=new AudioDsp();dsp.configure(new AudioProcessor.AudioFormat(48000,2,C.ENCODING_PCM_16BIT));dsp.flush();ByteBuffer input=ByteBuffer.allocateDirect(48000*4).order(ByteOrder.nativeOrder());
         for(int i=0;i<48000;i++){short sample=(short)(3276*Math.sin(2*Math.PI*frequency*i/48000));input.putShort(sample).putShort(sample);}input.flip();dsp.queueInput(input);ByteBuffer output=dsp.getOutput().order(ByteOrder.nativeOrder());double sum=0;int n=0;while(output.remaining()>=2){double value=output.getShort()/32768.0;if(n++>48000)sum+=value*value;}return Math.sqrt(sum/(n-48001));

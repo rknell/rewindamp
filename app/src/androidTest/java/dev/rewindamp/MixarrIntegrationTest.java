@@ -158,8 +158,8 @@ public class MixarrIntegrationTest {
                 helpers.await(()->fixture.playlists.get()==1,10);assertFalse(has(screen,"YouTube import: Fixture Import"));assertEquals(0,fixture.previews.get());assertEquals(0,fixture.searches.get());
                 main(()->{input(screen.getWindow().getDecorView()).setText("https://youtube.com.evil.test/watch?v=abcdefghijk");find(screen.getWindow().getDecorView(),"PREVIEW YOUTUBE IMPORT").performClick();});
                 assertTrue(has(screen,"Paste an HTTPS YouTube video or playlist link."));assertEquals(0,fixture.previews.get());
-                assertTrue(MixarrYouTubeImport.validLink("https://youtu.be/abcdefghijk"));assertFalse(MixarrYouTubeImport.isPlaylist("https://www.youtube.com/watch?v=abcdefghijk&list=PLfixture12345"));
-                assertFalse(MixarrYouTubeImport.validLink("https://user:pass@www.youtube.com/watch?v=abcdefghijk"));assertFalse(MixarrYouTubeImport.validLink("http://www.youtube.com/watch?v=abcdefghijk"));
+                assertTrue(YouTubeSelection.validLink("https://youtu.be/abcdefghijk"));assertFalse(YouTubeSelection.isPlaylist("https://www.youtube.com/watch?v=abcdefghijk&list=PLfixture12345"));
+                assertFalse(YouTubeSelection.validLink("https://user:pass@www.youtube.com/watch?v=abcdefghijk"));assertFalse(YouTubeSelection.validLink("http://www.youtube.com/watch?v=abcdefghijk"));
             }finally{if(activity!=null){MixarrActivity last=activity;main(last::finish);}instrumentation.waitForIdleSync();context.getSharedPreferences(scope,0).edit().clear().commit();SessionStore.clear(context);}
         }
     }

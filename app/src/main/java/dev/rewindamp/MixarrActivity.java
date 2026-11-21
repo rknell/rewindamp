@@ -50,7 +50,7 @@ public final class MixarrActivity extends Activity {
         initial=state==null?getIntent().getStringExtra("query"):state.getString("query","");if(initial==null)initial="";
         activityMode=state==null?getIntent().getBooleanExtra("activity",false):state.getBoolean("activity");
         api=MixarrSession.load(this,scope);
-        if(api==null)connect();else{screen();if(!activityMode&&state==null&&!initial.isBlank()&&!MixarrYouTubeImport.isPlaylist(initial))search();}
+        if(api==null)connect();else{screen();if(!activityMode&&state==null&&!initial.isBlank()&&!YouTubeSelection.isPlaylist(initial))search();}
     }
     void base(String title){
         root=column();root.setBackground(Retro.bevel(Retro.BG,false));root.setPadding(dp(8),dp(8),dp(8),dp(8));
@@ -78,7 +78,7 @@ public final class MixarrActivity extends Activity {
             form.getChildAt(form.getChildCount()-1).setEnabled(false);
             io.execute(()->{try{
                 MixarrApi connected=MixarrApi.login(url,name,secret);MixarrSession.save(getApplicationContext(),scope,connected);
-                handler.post(()->{if(destroyed)return;api=connected;screen();if(!activityMode&&!initial.isBlank()&&!MixarrYouTubeImport.isPlaylist(initial))search();});
+                handler.post(()->{if(destroyed)return;api=connected;screen();if(!activityMode&&!initial.isBlank()&&!YouTubeSelection.isPlaylist(initial))search();});
             }catch(Exception e){handler.post(()->{if(destroyed)return;error.setText(e instanceof IllegalArgumentException?"Enter a full HTTPS Mixarr address.":MixarrApi.message(e));address.setEnabled(true);username.setEnabled(true);form.getChildAt(form.getChildCount()-1).setEnabled(true);});}});
         });form.addView(signIn,new LinearLayout.LayoutParams(-1,dp(48)));
     }
@@ -105,18 +105,18 @@ public final class MixarrActivity extends Activity {
     }
     void search(){
         if(api==null||query==null)return;
-        String term=query.getText().toString().trim();if(MixarrYouTubeImport.isLink(term)){youtube(term);return;}if(term.length()>300){status.setText("Music searches can contain at most 300 characters.");return;}if(term.isEmpty()){status.setText("Enter a song, artist or album name.");return;}
+        String term=query.getText().toString().trim();if(YouTubeSelection.isLink(term)){youtube(term);return;}if(term.length()>300){status.setText("Music searches can contain at most 300 characters.");return;}if(term.isEmpty()){status.setText("Enter a song, artist or album name.");return;}
         int request=++generation;MixarrApi client=api;recordings=new JSONArray();results.removeAllViews();status.setText("Searching MusicBrainz through Mixarr…");
         ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(query.getWindowToken(),0);
         io.execute(()->{try{JSONArray rows=(JSONArray)client.request("/api/v1/track-requests/search",new JSONObject().put("query",term));handler.post(()->{if(destroyed||request!=generation||api!=client)return;recordings=rows;status.setText(rows.length()==0?"No recordings found. Try another song, artist or album.":rows.length()+(rows.length()==1?" recording":" recordings")+" · Review the version before adding.");renderResults();});}
             catch(Exception e){handler.post(()->{if(!destroyed&&request==generation)status.setText(MixarrApi.message(e));});}});
     }
-    void updateSearchButton(){String term=query.getText().toString().trim();searchButton.setText(MixarrYouTubeImport.isLink(term)?MixarrYouTubeImport.isPlaylist(term)?"DOWNLOAD ENTIRE PLAYLIST":"PREVIEW YOUTUBE IMPORT":"SEARCH ONLINE");}
+    void updateSearchButton(){String term=query.getText().toString().trim();searchButton.setText(YouTubeSelection.isLink(term)?YouTubeSelection.isPlaylist(term)?"DOWNLOAD ENTIRE PLAYLIST":"PREVIEW YOUTUBE IMPORT":"SEARCH ONLINE");}
     void youtube(String url){
-        if(!MixarrYouTubeImport.validLink(url)){status.setText("Paste an HTTPS YouTube video or playlist link.");return;}
-        if(MixarrYouTubeImport.isPlaylist(url)&&!submitting.add("playlist:"+url))return;
+        if(!YouTubeSelection.validLink(url)){status.setText("Paste an HTTPS YouTube video or playlist link.");return;}
+        if(YouTubeSelection.isPlaylist(url)&&!submitting.add("playlist:"+url))return;
         int request=++generation;MixarrApi client=api;results.removeAllViews();recordings=new JSONArray();
-        boolean playlist=MixarrYouTubeImport.isPlaylist(url);
+        boolean playlist=YouTubeSelection.isPlaylist(url);
         status.setText(playlist?"Queuing all available playlist tracks…":"Reading the YouTube link…");
         ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(query.getWindowToken(),0);
         io.execute(()->{try{
