@@ -35,7 +35,10 @@ final class PcmEqualizer {
         float[] latest=null;
         if(!visualize){
             sampleCount=0;
-            if(!enabled){output.put(input);return null;}
+            if(!enabled){
+                if(input.hasRemaining())output.put(input);
+                return null;
+            }
         }
         while(input.remaining()>=channels*2){
             double mono=0;

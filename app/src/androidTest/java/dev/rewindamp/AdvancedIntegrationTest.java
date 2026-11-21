@@ -384,6 +384,8 @@ public class AdvancedIntegrationTest {
             AudioDsp dsp=new AudioDsp(()->true);
             dsp.configure(new AudioProcessor.AudioFormat(48000,2,C.ENCODING_PCM_16BIT));
             dsp.flush();
+            dsp.queueInput(AudioProcessor.EMPTY_BUFFER);
+            assertFalse(dsp.getOutput().hasRemaining());
             ByteBuffer signal=ByteBuffer.allocateDirect(8192).order(ByteOrder.nativeOrder());
             for(int i=0;i<2048;i++)signal.putShort((short)(7000*Math.sin(i*Math.PI/32))).putShort((short)0);
             signal.flip();
