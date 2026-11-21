@@ -29,6 +29,7 @@ public final class DesktopIntegrationTest {
             testDsp();
             testSkin();
             testChapters();
+            testPodcastSignInErrors();
             testFixture(temp);
             testAudio(temp);
             if (List.of(args).contains("--shared-fixture")) testSharedFixture(temp);
@@ -38,6 +39,26 @@ public final class DesktopIntegrationTest {
                 for (Path file : files.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
             }
         }
+    }
+
+    private static void testPodcastSignInErrors() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/auth/login", exchange -> {
+            try (exchange) { exchange.sendResponseHeaders(405, -1); }
+        });
+        server.start();
+        try {
+            String address = "http://127.0.0.1:" + server.getAddress().getPort();
+            try {
+                PodcastApi.login(address, "listener", "fixture password");
+                throw new AssertionError("Expected the podcast sign-in request to fail");
+            } catch (PodcastApi.HttpError e) {
+                String message = DesktopApp.podcastLoginHelp(e);
+                assert e.status == 405 && message.contains("HTTP 405") && message.contains("HTTPS address");
+            }
+            assert DesktopApp.podcastLoginHelp(new PodcastApi.HttpError(401)).contains("reset your password");
+            assert DesktopApp.podcastLoginHelp(new PodcastApi.HttpError(429)).contains("Wait a minute");
+        } finally { server.stop(0); }
     }
 
     private static void testFixture(Path temp) throws Exception {

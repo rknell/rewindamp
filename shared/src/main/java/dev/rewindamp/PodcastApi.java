@@ -7,6 +7,11 @@ import java.nio.charset.StandardCharsets;
 
 /** Independent server credentials: never put tokens into media URLs or music sessions. */
 final class PodcastApi {
+    static final class HttpError extends java.io.IOException {
+        final int status;
+        HttpError(int status){super("Podcast server returned HTTP "+status);this.status=status;}
+    }
+
     final String server,token,account;
     PodcastApi(String server,String token){this(server,token,"1");}
     PodcastApi(String server,String token,String account){
@@ -33,7 +38,7 @@ final class PodcastApi {
         c.setRequestProperty("Authorization",authorization());c.setRequestProperty("Accept","application/json");
         try{
             if(body!=null){c.setRequestMethod("POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");try(var out=c.getOutputStream()){out.write(body.toString().getBytes(StandardCharsets.UTF_8));}}
-            int code=c.getResponseCode();if(code<200||code>=300)throw new java.io.IOException("Podcast server returned HTTP "+code);
+            int code=c.getResponseCode();if(code<200||code>=300)throw new HttpError(code);
             try(var in=c.getInputStream();var out=new java.io.ByteArrayOutputStream()){byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){out.write(buffer,0,n);if(out.size()>8*1024*1024)throw new java.io.IOException("Podcast response too large");}return new JSONObject(out.toString(StandardCharsets.UTF_8.name()));}
         }finally{c.disconnect();}
     }

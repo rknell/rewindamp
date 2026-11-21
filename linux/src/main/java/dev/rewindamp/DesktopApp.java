@@ -410,19 +410,52 @@ final class DesktopApp {
             });
             return;
         }
-        Login login = login(frame, "Connect Rewindamp Podcasts", preferences.read("addresses").optString("podcasts", "https://"), true);
+        signInToPodcasts(preferences.read("addresses").optString("podcasts", "https://"), "");
+    }
+
+    private void signInToPodcasts(String address, String username) {
+        Login login = login(frame, "Connect Rewindamp Podcasts", address, true, username);
         if (login == null) return;
         connectingPodcasts = true;
         say("Connecting to the podcast archive…");
         async(() -> {
-            PodcastApi api = PodcastApi.login(login.address, login.user, login.password);
-            api.request("/api/feeds", null);
+            PodcastApi api;
+            try {
+                api = PodcastApi.login(login.address, login.user, login.password);
+                api.request("/api/feeds", null);
+            } catch (Exception e) {
+                throw new IOException(podcastLoginHelp(e), e);
+            }
             return new Connection<>(api, DesktopSecrets.save("podcasts", new JSONObject().put("server", api.server).put("token", api.token).put("account", api.account)));
         }, result -> {
             connectingPodcasts = false;
             installPodcasts(result.api);
             keyring(result.saved);
-        }, error -> { connectingPodcasts = false; say(error); });
+        }, error -> {
+            connectingPodcasts = false;
+            say("Podcast sign-in failed.");
+            Object[] choices = {"Try again", "Cancel"};
+            int choice = JOptionPane.showOptionDialog(frame, error.split("\n"), "Podcast sign-in failed",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.ERROR_MESSAGE, null, choices, choices[0]);
+            if (choice == 0) signInToPodcasts(login.address, login.user);
+        });
+    }
+
+    static String podcastLoginHelp(Exception error) {
+        String addressHelp = "Open your Rewindamp Podcasts site in a browser.\n"
+            + "Enter its HTTPS address, for example https://podcasts.example.com.";
+        if (error instanceof PodcastApi.HttpError http) {
+            return switch (http.status) {
+                case 401, 403 -> "The podcast server rejected your sign-in.\n"
+                    + "Check your username and password.\nAsk the account owner to reset your password or check your access.";
+                case 404, 405 -> "This address does not accept podcast sign-in (HTTP " + http.status + ").\n" + addressHelp;
+                case 429 -> "There have been too many sign-in attempts.\nWait a minute, then try again.";
+                default -> "The podcast server returned HTTP " + http.status + ".\n" + addressHelp + "\nIf the site is unavailable, try again later.";
+            };
+        }
+        if (error instanceof IllegalArgumentException || error instanceof org.json.JSONException)
+            return "Could not sign in at this address.\n" + addressHelp;
+        return "Could not connect to Rewindamp Podcasts.\nCheck your network connection, then try again.\n" + addressHelp;
     }
 
     private void installPodcasts(PodcastApi api) {
@@ -464,7 +497,11 @@ final class DesktopApp {
     record Login(String address, String user, String password) {}
 
     static Login login(JFrame parent, String title, String address, boolean username) {
-        JTextField server = new JTextField(address, 33), user = new JTextField(33);
+        return login(parent, title, address, username, "");
+    }
+
+    private static Login login(JFrame parent, String title, String address, boolean username, String initialUser) {
+        JTextField server = new JTextField(address, 33), user = new JTextField(initialUser, 33);
         JPasswordField pass = new JPasswordField(33);
         JPanel input = column(new JLabel("Server address"), server);
         if (username) { input.add(new JLabel("Username")); input.add(user); }
