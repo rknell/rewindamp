@@ -6,9 +6,9 @@ database. It contains no configuration, owner token, runtime state or archived a
 The fixture binds only to loopback and replaces external catalogue/RSS access.
 This directory is test support and is not packaged in the Android APK.
 
-Snapshot SHA-256: `193dfc856d9eb88c69829daa66a7c393eb8399a97c89fc4039495abf65dff6b2`.
+Snapshot SHA-256: `d9944d0270ea2817f2797fa080bb31870c36570f5f06121f6fe32e8598c95b8b`.
 Refresh deliberately from the maintained `rewindamp-server/server.py` when API
 compatibility changes, then rerun the isolated integration checks.
 
-CI reads this fixture dependency from its workflow revision, so current CI can also
-test older source tags that predate the bundled dependency.
+CI uses the selected source revision’s fixture whenever it exists and uses the workflow
+revision’s fixture for older source tags without a bundled dependency.

@@ -32,14 +32,14 @@ final class PodcastLibrary extends PodcastState {
     final DownloadManager manager;
     private final StandaloneDatabaseProvider database;
     static synchronized PodcastLibrary get(Context context,PodcastApi api){
-        String scope=LibraryStore.hash(api.server+"\nRewindampPodcastOwner");
+        String scope=LibraryStore.hash(api.server+"\n"+api.storageAccount());
         if(instance!=null&&(!instance.store.scope.equals(scope)||!instance.api.token.equals(api.token))){
             instance.manager.release();instance.cache.release();instance.database.close();DownloadService.clearDownloadManagerHelpers();instance=null;
         }
         if(instance==null)instance=new PodcastLibrary(context.getApplicationContext(),api);return instance;
     }
     private PodcastLibrary(Context context,PodcastApi api){
-        super(api,new LibraryStore(context,new JellyfinApi(api.server,"","RewindampPodcastOwner","")));
+        super(api,new LibraryStore(context,new JellyfinApi(api.server,"",api.storageAccount(),"")));
         this.context=context;database=new StandaloneDatabaseProvider(context);
         cache=new SimpleCache(new File(store.directory,"podcast-audio"),new NoOpCacheEvictor(),database);
         manager=new DownloadManager(context,new androidx.media3.exoplayer.offline.DefaultDownloadIndex(database,"podcast_"+store.scope),

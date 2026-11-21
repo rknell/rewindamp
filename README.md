@@ -43,8 +43,12 @@ separately in `rewindamp-server/README.md` in the media-server workspace.
 Use **+ Find shows** to search Apple Podcasts' Australian catalogue by title or publisher.
 Choose a show, select a subscription pass, then confirm. New subscriptions default to future
 episodes only; already subscribed feeds are labelled. Manual RSS entry is also available in
-podcast settings. Connect using your owner password after setting it on the server website.
-Android stores an encrypted session token rather than the password. Searches use the Rewindamp server; no Apple account or API key is needed.
+podcast settings. Connect with the server address, podcast username and password.
+The original account is named `owner` and keeps its subscriptions and history.
+The owner can create more accounts from **Users** in the server web console. Each account
+has its own subscriptions and listening history, with one server download shared by
+everyone subscribed to the same feed. Clients store a session token instead of the
+password. Podcast discovery uses the Rewindamp server and requires no Apple account or API key.
 
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.

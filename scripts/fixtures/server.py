@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rewindamp's independent, single-owner podcast archive. Python standard library only."""
+"""Rewindamp's shared podcast archive and private listening accounts."""
 from __future__ import annotations
 import argparse
 import getpass
@@ -13,6 +13,7 @@ import http.client
 import ipaddress
 import json
 import logging
+import math
 import mimetypes
 import os
 from pathlib import Path
@@ -144,16 +145,42 @@ CREATE TABLE IF NOT EXISTS episodes(
  retry_at REAL NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '', UNIQUE(feed_id,guid));
 CREATE TABLE IF NOT EXISTS aliases(feed_id TEXT NOT NULL, alias TEXT NOT NULL, episode_id TEXT NOT NULL,
  PRIMARY KEY(feed_id,alias));
-CREATE TABLE IF NOT EXISTS progress(
- episode_id TEXT PRIMARY KEY REFERENCES episodes(id), position REAL NOT NULL DEFAULT 0,
- state TEXT NOT NULL DEFAULT 'unplayed', epoch INTEGER NOT NULL DEFAULT 0,
- observed REAL NOT NULL DEFAULT 0, updated REAL NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, episode_id TEXT NOT NULL, received REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS episode_feed_date ON episodes(feed_id,published);
-CREATE TABLE IF NOT EXISTS auth_settings(id INTEGER PRIMARY KEY CHECK(id=1), salt TEXT NOT NULL, password_hash TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS auth_sessions(token_hash TEXT PRIMARY KEY, expires REAL NOT NULL);
-
 '''
+
+TENANT_SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS accounts(
+        id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE,
+        salt TEXT, password_hash TEXT, enabled INTEGER NOT NULL DEFAULT 1)""",
+    """CREATE TABLE IF NOT EXISTS subscriptions(
+        account_id INTEGER NOT NULL REFERENCES accounts(id), feed_id TEXT NOT NULL REFERENCES feeds(id),
+        mode TEXT NOT NULL, years INTEGER NOT NULL, since REAL, baseline REAL,
+        active INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(account_id,feed_id))""",
+    "CREATE INDEX IF NOT EXISTS subscription_feed ON subscriptions(feed_id,active)",
+    """CREATE TABLE IF NOT EXISTS episode_requests(
+        account_id INTEGER NOT NULL REFERENCES accounts(id), episode_id TEXT NOT NULL REFERENCES episodes(id),
+        PRIMARY KEY(episode_id,account_id))""",
+    """CREATE TABLE IF NOT EXISTS progress(
+        account_id INTEGER NOT NULL REFERENCES accounts(id), episode_id TEXT NOT NULL REFERENCES episodes(id),
+        position REAL NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'unplayed',
+        epoch INTEGER NOT NULL DEFAULT 0, observed REAL NOT NULL DEFAULT 0, updated REAL NOT NULL DEFAULT 0,
+        PRIMARY KEY(account_id,episode_id))""",
+    """CREATE TABLE IF NOT EXISTS events(
+        account_id INTEGER NOT NULL REFERENCES accounts(id), id TEXT NOT NULL,
+        episode_id TEXT NOT NULL, received REAL NOT NULL, PRIMARY KEY(account_id,id))""",
+    """CREATE TABLE IF NOT EXISTS auth_sessions(
+        token_hash TEXT PRIMARY KEY, expires REAL NOT NULL, account_id INTEGER NOT NULL REFERENCES accounts(id))""",
+)
+OWNER = 1
+PASS_ELIGIBLE = """(
+    CASE s.mode
+      WHEN 'all' THEN 1
+      WHEN 'future' THEN e.first_seen>s.baseline AND e.published>s.baseline AND e.published<=:now
+      WHEN 'years' THEN e.published BETWEEN years_ago(:now,s.years) AND :now
+      WHEN 'since' THEN e.published BETWEEN s.since AND :now
+      ELSE 0
+    END OR EXISTS (SELECT 1 FROM episode_requests r WHERE r.account_id=s.account_id AND r.episode_id=e.id)
+)"""
 
 class CatalogueUnavailable(Exception): pass
 class CatalogueRateLimited(Exception): pass
@@ -177,11 +204,9 @@ class Archive:
         if 'requested' not in {r[1] for r in self.db.execute('PRAGMA table_info(episodes)')}:
             self.db.execute('ALTER TABLE episodes ADD COLUMN requested INTEGER NOT NULL DEFAULT 0')
             self.db.commit()
-        # Convert still-valid legacy sessions to explicitly revocable remembered sessions.
-        with self.db:
-            self.db.execute('DELETE FROM auth_sessions WHERE expires!=0 AND expires<=?',(self.clock(),))
-            self.db.execute('UPDATE auth_sessions SET expires=0 WHERE expires!=0')
         self.db.execute('PRAGMA foreign_keys=ON')
+        self.db.create_function('years_ago',2,years_ago,deterministic=True)
+        self.migrate_accounts()
         self.max_bytes = int(os.getenv('REWINDAMP_MAX_ARCHIVE_BYTES', str(50*1024**3)))
         self.max_episode_bytes = int(os.getenv('REWINDAMP_MAX_EPISODE_BYTES', str(1024**3)))
         token_file = self.config/'owner-token'
@@ -196,73 +221,167 @@ class Archive:
         with self.lock:
             return [dict(r) for r in self.db.execute(sql,args)]
 
+    def migrate_accounts(self):
+        # Keep catalogue IDs and archive paths so existing downloads and client queues still resolve.
+        with self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            if self.db.execute('PRAGMA user_version').fetchone()[0] >= 1: return
+            legacy = {row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            for table in ('progress','events','auth_sessions'):
+                if table in legacy: self.db.execute(f'ALTER TABLE {table} RENAME TO legacy_{table}')
+            for statement in TENANT_SCHEMA: self.db.execute(statement)
+            self.db.execute("INSERT INTO accounts(id,username) VALUES(1,'owner')")
+            if 'auth_settings' in legacy:
+                self.db.execute("""UPDATE accounts SET (salt,password_hash)=
+                    (SELECT salt,password_hash FROM auth_settings WHERE id=1) WHERE id=1""")
+                self.db.execute('DROP TABLE auth_settings')
+            self.db.execute("""INSERT INTO subscriptions(account_id,feed_id,mode,years,since,baseline)
+                SELECT 1,id,mode,years,since,baseline FROM feeds""")
+            self.db.execute('INSERT INTO episode_requests SELECT 1,id FROM episodes WHERE requested=1')
+            for table, select, args in (
+                ('progress','SELECT 1,episode_id,position,state,epoch,observed,updated FROM legacy_progress',()),
+                ('events','SELECT 1,id,episode_id,received FROM legacy_events',()),
+                ('auth_sessions','SELECT token_hash,0,1 FROM legacy_auth_sessions WHERE expires=0 OR expires>?',(self.clock(),)),
+            ):
+                if table in legacy:
+                    self.db.execute(f'INSERT INTO {table} {select}',args)
+                    self.db.execute(f'DROP TABLE legacy_{table}')
+            self.db.execute('PRAGMA user_version=1')
+
     def password_set(self):
-        return bool(self.rows('SELECT id FROM auth_settings WHERE id=1'))
+        return bool(self.rows('SELECT id FROM accounts WHERE id=1 AND password_hash IS NOT NULL'))
 
     @staticmethod
     def password_hash(password, salt):
         return hashlib.scrypt(password.encode('utf-8'),salt=bytes.fromhex(salt),n=32768,r=8,p=1,maxmem=64*1024**2,dklen=32).hex()
 
-    def check_password(self, password):
+    @staticmethod
+    def username(value):
+        if not isinstance(value,str) or not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{1,31}',value.strip()):
+            raise ValueError('Use 2–32 letters, numbers, dots, underscores or hyphens for the username')
+        return value.strip().lower()
+
+    def check_password(self, password, account_id=OWNER):
         if not isinstance(password,str) or len(password)>256: return False
-        rows = self.rows('SELECT * FROM auth_settings WHERE id=1')
+        rows = self.rows('SELECT salt,password_hash FROM accounts WHERE id=? AND enabled=1 AND password_hash IS NOT NULL',(account_id,))
         salt = rows[0]['salt'] if rows else '00'*32
         expected = rows[0]['password_hash'] if rows else '00'*32
         return hmac.compare_digest(self.password_hash(password,salt),expected) and bool(rows)
 
     def authenticated(self, token):
-        if not isinstance(token,str) or not token or len(token)>256: return False
-        if not self.password_set(): return hmac.compare_digest(token.encode(),self.token.encode())
-        return bool(self.rows('SELECT token_hash FROM auth_sessions WHERE token_hash=?',(hashlib.sha256(token.encode()).hexdigest(),)))
+        if not isinstance(token,str) or not token or len(token)>256: return None
+        if not self.password_set(): return OWNER if hmac.compare_digest(token.encode(),self.token.encode()) else None
+        rows = self.rows("""SELECT a.id FROM auth_sessions s JOIN accounts a ON a.id=s.account_id
+            WHERE s.token_hash=? AND a.enabled=1 AND (s.expires=0 OR s.expires>?)""",
+            (hashlib.sha256(token.encode()).hexdigest(),self.clock()))
+        return rows[0]['id'] if rows else None
 
-    def session(self):
+    def account(self, account_id):
+        return self.rows('SELECT id,username,enabled FROM accounts WHERE id=?',(account_id,))[0]
+
+    def session(self, account_id=OWNER):
         token = secrets.token_urlsafe(36)
         with self.lock,self.db:
-            self.db.execute('INSERT INTO auth_sessions VALUES(?,?)',(hashlib.sha256(token.encode()).hexdigest(),0))
+            self.db.execute('INSERT INTO auth_sessions VALUES(?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),0,account_id))
         return token
 
-    def verify_password(self,password):
+    def verify_password(self,password,account_id=OWNER):
         with self.auth_lock:
             now=self.clock();self.login_attempts=[stamp for stamp in self.login_attempts if now-stamp<60]
             if len(self.login_attempts)>=10: raise CatalogueRateLimited()
             self.login_attempts.append(now)
-            return self.check_password(password)
+            return self.check_password(password,account_id)
 
-    def login(self,password):
+    def login(self,password,username='owner'):
         with self.auth_lock:
-            if not self.verify_password(password): return None
-            return self.session()
+            rows = self.rows('SELECT id FROM accounts WHERE username=?',(self.username(username),))
+            account_id = rows[0]['id'] if rows else None
+            if not self.verify_password(password,account_id): return None
+            return self.session(account_id)
 
-    def set_password(self,password):
+    def password_fields(self,password):
         if not isinstance(password,str) or not 10<=len(password)<=256: raise ValueError('Choose a password with 10–256 characters')
-        salt=secrets.token_hex(32);hashed=self.password_hash(password,salt)
-        with self.auth_lock,self.lock,self.db:
-            self.db.execute('INSERT INTO auth_settings VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET salt=excluded.salt,password_hash=excluded.password_hash',(salt,hashed))
-            self.db.execute('DELETE FROM auth_sessions')
-        return self.session()
+        salt=secrets.token_hex(32)
+        return salt,self.password_hash(password,salt)
+
+    def set_password(self,password,account_id=OWNER):
+        with self.auth_lock:
+            salt,hashed=self.password_fields(password)
+            with self.lock,self.db:
+                self.db.execute('UPDATE accounts SET salt=?,password_hash=? WHERE id=?',(salt,hashed,account_id))
+                self.db.execute('DELETE FROM auth_sessions WHERE account_id=?',(account_id,))
+            return self.session(account_id)
+
+    def create_account(self,username,password):
+        username=self.username(username)
+        with self.auth_lock:
+            salt,hashed=self.password_fields(password)
+            with self.lock,self.db:
+                try: self.db.execute('INSERT INTO accounts(username,salt,password_hash) VALUES(?,?,?)',(username,salt,hashed))
+                except sqlite3.IntegrityError: raise ValueError('That username is already in use') from None
+
+    def manage_account(self,account_id,body):
+        if account_id==OWNER: raise ValueError('Manage the owner password in Password settings')
+        with self.auth_lock:
+            rows=self.rows('SELECT id FROM accounts WHERE id=?',(account_id,))
+            if not rows: raise KeyError(account_id)
+            with self.lock,self.db:
+                if 'enabled' in body and type(body['enabled']) is bool:
+                    self.db.execute('UPDATE accounts SET enabled=? WHERE id=?',(body['enabled'],account_id))
+                    for row in self.rows('SELECT feed_id FROM subscriptions WHERE account_id=? AND active=1',(account_id,)):
+                        self.reevaluate(row['feed_id'])
+                elif 'new_password' in body:
+                    salt,hashed=self.password_fields(body['new_password'])
+                    self.db.execute('UPDATE accounts SET salt=?,password_hash=? WHERE id=?',(salt,hashed,account_id))
+                else: raise ValueError('Choose a password reset or account status')
+                self.db.execute('DELETE FROM auth_sessions WHERE account_id=?',(account_id,))
 
     def logout(self,token):
         with self.lock,self.db:self.db.execute('DELETE FROM auth_sessions WHERE token_hash=?',(hashlib.sha256(token.encode()).hexdigest(),))
 
-    def subscribe(self, title, url, mode='future', years=0, since=None, only_if_new=False):
+    def subscribe(self, title, url, mode='future', years=0, since=None, only_if_new=False, account_id=OWNER):
+        if not isinstance(url,str) or len(url)>4000: raise ValueError('Invalid feed URL')
         public_address(url)
         if mode not in ('all','future','years','since','manual'):
             raise ValueError('Invalid subscription mode')
         years = int(years)
         if mode == 'years' and years not in range(1,11):
             raise ValueError('Years must be 1–10')
-        if mode == 'since' and (since is None or not isinstance(since,(int,float))):
+        if mode == 'since' and (type(since) not in (int,float) or not math.isfinite(since)):
             raise ValueError('A publication cutoff timestamp is required')
         feed_id = digest(url)
         with self.lock, self.db:
-            existing = self.rows('SELECT id FROM feeds WHERE url=?',(url,))
-            if existing and only_if_new: return existing[0]['id']
-            self.db.execute('INSERT INTO feeds(id,title,url,mode,years,since,subscribed) VALUES(?,?,?,?,?,?,?) ON CONFLICT(url) DO UPDATE SET mode=excluded.mode,years=excluded.years,since=excluded.since',
-                (feed_id,str(title)[:300],url,mode,years,since,self.clock()))
+            now=self.clock()
+            self.db.execute('INSERT OR IGNORE INTO feeds(id,title,url,mode,years,since,subscribed) VALUES(?,?,?,?,?,?,?)',
+                (feed_id,str(title)[:300],url,mode,years,since,now))
+            existing = self.rows('SELECT active FROM subscriptions WHERE account_id=? AND feed_id=?',(account_id,feed_id))
+            if existing and existing[0]['active'] and only_if_new: return feed_id
+            imported = self.rows('SELECT baseline FROM feeds WHERE id=?',(feed_id,))[0]['baseline']
+            self.db.execute("""INSERT INTO subscriptions(account_id,feed_id,mode,years,since,baseline) VALUES(?,?,?,?,?,?)
+                ON CONFLICT(account_id,feed_id) DO UPDATE SET mode=excluded.mode,years=excluded.years,since=excluded.since,
+                baseline=CASE WHEN subscriptions.active=1 THEN subscriptions.baseline ELSE excluded.baseline END,active=1""",
+                (account_id,feed_id,mode,years,since,now if imported is not None else None))
             self.reevaluate(feed_id)
         return feed_id
 
-    def search_podcasts(self, term):
+    def unsubscribe(self, account_id, feed_id):
+        with self.lock,self.db:
+            self.require_feed(account_id,feed_id)
+            self.db.execute('UPDATE subscriptions SET active=0 WHERE account_id=? AND feed_id=?',(account_id,feed_id))
+            self.db.execute("""DELETE FROM episode_requests WHERE account_id=? AND episode_id IN
+                (SELECT id FROM episodes WHERE feed_id=?)""",(account_id,feed_id))
+            self.reevaluate(feed_id)
+
+    def require_feed(self, account_id, feed_id):
+        if not self.rows('SELECT 1 FROM subscriptions WHERE account_id=? AND feed_id=? AND active=1',(account_id,feed_id)):
+            raise KeyError(feed_id)
+
+    def feeds(self, account_id):
+        return self.rows("""SELECT f.id,f.title,f.url,f.last_refresh,f.error,s.mode,s.years,s.since,s.baseline,
+            (SELECT COUNT(*) FROM episodes e WHERE e.feed_id=f.id AND e.file IS NOT NULL) AS downloaded
+            FROM feeds f JOIN subscriptions s ON s.feed_id=f.id WHERE s.account_id=? AND s.active=1 ORDER BY f.title""",(account_id,))
+
+    def search_podcasts(self, term, account_id=OWNER):
         term = ' '.join(str(term).split())
         if not 2 <= len(term) <= 120:
             raise ValueError('Search must contain 2–120 characters')
@@ -304,7 +423,7 @@ class Archive:
                 except Exception as exc:
                     LOG.warning('Podcast catalogue search failed (%s)',type(exc).__name__)
                     raise CatalogueUnavailable() from None
-            subscribed = {row['url']:row['id'] for row in self.rows('SELECT id,url FROM feeds')}
+            subscribed = {row['url']:row['id'] for row in self.feeds(account_id)}
             return [dict(item,subscribed=item['feed_url'] in subscribed,feed_id=subscribed.get(item['feed_url'])) for item in items]
 
     def seed(self):
@@ -312,21 +431,19 @@ class Archive:
             if not self.rows('SELECT id FROM feeds WHERE url=?',(url,)):
                 self.subscribe(title,url,mode,years)
 
-    def eligible(self, feed, episode, now):
-        if feed['mode'] == 'all': return True
-        if feed['mode'] == 'manual': return False
-        published = episode['published']
-        if published is None: return False
-        if feed['mode'] == 'future':
-            return feed['baseline'] is not None and episode['first_seen'] > feed['baseline'] and published > feed['baseline'] and published <= now
-        cutoff = years_ago(now,feed['years']) if feed['mode']=='years' else feed['since']
-        return cutoff <= published <= now
-
     def reevaluate(self, feed_id):
-        feed = self.rows('SELECT * FROM feeds WHERE id=?',(feed_id,))[0]
-        now = self.clock()
-        for episode in self.rows('SELECT * FROM episodes WHERE feed_id=?',(feed_id,)):
-            self.db.execute('UPDATE episodes SET eligible=? WHERE id=?',(int(episode['requested'] or self.eligible(feed,episode,now)),episode['id']))
+        self.db.execute("""UPDATE episodes AS e SET eligible=EXISTS (
+            SELECT 1 FROM subscriptions s JOIN accounts a ON a.id=s.account_id
+            WHERE s.feed_id=e.feed_id AND s.active=1 AND a.enabled=1 AND """+PASS_ELIGIBLE+
+            ') WHERE e.feed_id=:feed',{'feed':feed_id,'now':self.clock()})
+
+    def request_download(self, account_id, episode_id):
+        with self.lock,self.db:
+            rows=self.rows('SELECT feed_id FROM episodes WHERE id=?',(episode_id,))
+            if not rows: raise KeyError(episode_id)
+            self.require_feed(account_id,rows[0]['feed_id'])
+            self.db.execute('INSERT OR IGNORE INTO episode_requests VALUES(?,?)',(account_id,episode_id))
+            self.db.execute('UPDATE episodes SET eligible=1,retry_at=0 WHERE id=?',(episode_id,))
 
     def import_feed(self, feed_id, raw):
         title, entries = parse_feed(raw)
@@ -347,6 +464,7 @@ class Archive:
                     self.db.execute('INSERT OR IGNORE INTO aliases VALUES(?,?,?)',(feed_id,alias,episode_id))
             # Baseline only after the entire first successful import, not on subscription or a failed fetch.
             self.db.execute('UPDATE feeds SET title=?,baseline=COALESCE(baseline,?),last_refresh=?,error=? WHERE id=?',(title or feed['title'],now,now,'',feed_id))
+            self.db.execute('UPDATE subscriptions SET baseline=? WHERE feed_id=? AND active=1 AND baseline IS NULL',(now,feed_id))
             self.reevaluate(feed_id)
         return len(entries)
 
@@ -363,23 +481,25 @@ class Archive:
                 self.db.execute('UPDATE feeds SET error=?,last_refresh=? WHERE id=?',('Feed refresh failed; check the RSS URL or retry later',self.clock(),feed_id))
             return None
 
-    def episodes(self, feed_id=None, unplayed=False, offset=0, limit=100, order="newest", hide_played=False):
+    def episodes(self, feed_id=None, unplayed=False, offset=0, limit=100, order="newest", hide_played=False, account_id=OWNER):
         if order not in ("oldest","newest"): raise ValueError("Invalid episode order")
-        where, args = [], []
-        if feed_id: where.append('e.feed_id=?'); args.append(feed_id)
-        if unplayed: where.append("COALESCE(p.state,'unplayed') NOT IN ('played','dismissed') AND (e.eligible=1 OR e.file IS NOT NULL)")
-        if hide_played: where.append("COALESCE(p.state,'unplayed') NOT IN ('played','dismissed')")
-        rows = self.rows('''SELECT e.id,e.feed_id,e.title,e.published,e.duration,e.eligible,e.file IS NOT NULL AS downloaded,e.bytes,e.error,
-            f.title AS show_title,COALESCE(p.position,0) AS position,COALESCE(p.state,'unplayed') AS state,
-            COALESCE(p.epoch,0) AS epoch FROM episodes e JOIN feeds f ON e.feed_id=f.id
-            LEFT JOIN progress p ON p.episode_id=e.id '''+(' WHERE '+' AND '.join(where) if where else '')+
-            ' ORDER BY e.published '+('ASC' if order=='oldest' else 'DESC')+',e.id LIMIT ? OFFSET ?',tuple(args+[max(1,min(500,limit)),max(0,offset)]))
+        where = ['s.account_id=:account','s.active=1']
+        if feed_id: where.append('e.feed_id=:feed')
+        if unplayed: where.append("(e.file IS NOT NULL OR "+PASS_ELIGIBLE+")")
+        if unplayed or hide_played: where.append("COALESCE(p.state,'unplayed') NOT IN ('played','dismissed')")
+        rows = self.rows("""SELECT e.id,e.feed_id,e.title,e.published,e.duration,"""+PASS_ELIGIBLE+""" AS eligible,
+            e.file IS NOT NULL AS downloaded,e.bytes,e.error,f.title AS show_title,
+            COALESCE(p.position,0) AS position,COALESCE(p.state,'unplayed') AS state,COALESCE(p.epoch,0) AS epoch
+            FROM episodes e JOIN feeds f ON e.feed_id=f.id JOIN subscriptions s ON s.feed_id=f.id
+            LEFT JOIN progress p ON p.episode_id=e.id AND p.account_id=s.account_id WHERE """+' AND '.join(where)+
+            ' ORDER BY e.published '+('ASC' if order=='oldest' else 'DESC')+',e.id LIMIT :limit OFFSET :offset',
+            dict(account=account_id,feed=feed_id,now=self.clock(),limit=max(1,min(500,limit)),offset=max(0,offset)))
         for row in rows:
             row['downloaded'] = bool(row['downloaded'])
             row['eligible'] = bool(row['eligible'])
         return rows
 
-    def progress(self, episode_id, event):
+    def progress(self, episode_id, event, account_id=OWNER):
         event_id = str(event.get('event_id',''))
         if not re.fullmatch(r'[a-zA-Z0-9_-]{8,100}',event_id): raise ValueError('A unique event_id is required')
         action = event.get('action','progress')
@@ -390,26 +510,27 @@ class Archive:
         observed = min(now,float(event.get('observed',now)))
         if not 0 <= observed <= now: raise ValueError('Invalid event time')
         with self.lock, self.db:
-            episode = self.rows('SELECT duration FROM episodes WHERE id=?',(episode_id,))
+            episode = self.rows('''SELECT e.id FROM episodes e JOIN subscriptions s ON s.feed_id=e.feed_id
+                WHERE e.id=? AND s.account_id=?''',(episode_id,account_id))
             if not episode: raise KeyError(episode_id)
-            self.db.execute('INSERT OR IGNORE INTO progress(episode_id) VALUES(?)',(episode_id,))
-            previous = self.rows('SELECT * FROM progress WHERE episode_id=?',(episode_id,))[0]
-            if self.rows('SELECT id FROM events WHERE id=?',(event_id,)): return previous
-            self.db.execute('INSERT INTO events VALUES(?,?,?)',(event_id,episode_id,now))
+            self.db.execute('INSERT OR IGNORE INTO progress(episode_id,account_id) VALUES(?,?)',(episode_id,account_id))
+            previous = self.rows('SELECT * FROM progress WHERE episode_id=? AND account_id=?',(episode_id,account_id))[0]
+            if self.rows('SELECT id FROM events WHERE id=? AND account_id=?',(event_id,account_id)): return previous
+            self.db.execute('INSERT INTO events VALUES(?,?,?,?)',(account_id,event_id,episode_id,now))
             if 'position' not in event: position = previous['position']
             # Reset is compare-and-set. Delayed events from older generations cannot undo it.
             if int(event.get('epoch',0)) != previous['epoch']: return previous
             if action == 'reset':
-                self.db.execute("UPDATE progress SET position=0,state='unplayed',epoch=epoch+1,observed=?,updated=? WHERE episode_id=?",(now,now,episode_id))
+                self.db.execute("UPDATE progress SET position=0,state='unplayed',epoch=epoch+1,observed=?,updated=? WHERE episode_id=? AND account_id=?",(now,now,episode_id,account_id))
             else:
                 state = previous['state']
                 if action in ('played','dismissed'): state = action
                 elif state not in ('played','dismissed') and position > 0: state = 'in_progress'
                 if observed >= previous['observed']:
-                    self.db.execute('UPDATE progress SET position=?,state=?,observed=?,updated=? WHERE episode_id=?',(position,state,observed,now,episode_id))
+                    self.db.execute('UPDATE progress SET position=?,state=?,observed=?,updated=? WHERE episode_id=? AND account_id=?',(position,state,observed,now,episode_id,account_id))
                 elif action in ('played','dismissed'):
-                    self.db.execute('UPDATE progress SET state=?,updated=? WHERE episode_id=?',(state,now,episode_id))
-            return self.rows('SELECT * FROM progress WHERE episode_id=?',(episode_id,))[0]
+                    self.db.execute('UPDATE progress SET state=?,updated=? WHERE episode_id=? AND account_id=?',(state,now,episode_id,account_id))
+            return self.rows('SELECT * FROM progress WHERE episode_id=? AND account_id=?',(episode_id,account_id))[0]
 
     def download(self, episode_id):
         episode = self.rows('SELECT * FROM episodes WHERE id=?',(episode_id,))[0]
@@ -448,7 +569,9 @@ class Archive:
         try:
             with self.lock, self.db:
                 for feed in self.rows('SELECT id FROM feeds'): self.reevaluate(feed['id'])
-            for feed in self.rows('SELECT * FROM feeds'):
+            for feed in self.rows('''SELECT f.* FROM feeds f WHERE EXISTS (
+                SELECT 1 FROM subscriptions s JOIN accounts a ON a.id=s.account_id
+                WHERE s.feed_id=f.id AND s.active=1 AND a.enabled=1)'''):
                 if feed['last_refresh'] is None or self.clock()-feed['last_refresh'] >= 1800:
                     self.refresh(feed['id'])
             if download:
@@ -512,8 +635,13 @@ class Handler(BaseHTTPRequestHandler):
         # Renew the browser's persistent cookie when it restores its session.
         secure='; Secure' if self.headers.get('X-Forwarded-Proto','').lower()=='https' else ''
         return 'rewindamp_session='+token+'; Path=/; HttpOnly; SameSite=Strict; Max-Age='+('34560000' if token else '0')+secure
-    def authorized(self):
-        return self.archive.authenticated(self.request_token())
+    def identity(self, account_id):
+        account = self.archive.account(account_id)
+        return {'account_id':str(account_id),'username':account['username'],'admin':account_id==OWNER}
+    def request_account(self):
+        account = self.archive.authenticated(self.request_token())
+        expected = self.headers.get('X-Rewindamp-Account')
+        return account if expected is None or expected == str(account) else None
     def do_HEAD(self): self.do_GET()
     def do_GET(self):
         try:
@@ -529,20 +657,25 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 if self.command != 'HEAD': self.wfile.write(data)
                 return
-            if not self.authorized(): return self.reply(401,{'error':'Sign in required'})
+            account = self.request_account()
+            if account is None: return self.reply(401,{'error':'Sign in required'})
             if path == '/api/auth/session':
-                return self.reply(200,{'signed_in':True},session=self.request_token())
+                token = self.request_token()
+                return self.reply(200,{'signed_in':True,**self.identity(account)},session=token)
+            if path == '/api/admin/accounts':
+                if account != OWNER or not self.archive.password_set(): return self.reply(403,{'error':'Owner access required'})
+                return self.reply(200,{'items':self.archive.rows('SELECT id,username,enabled FROM accounts WHERE id!=1 ORDER BY username')})
             query = parse_qs(urlsplit(self.path).query)
             if path == '/api/podcasts/search':
-                try: return self.reply(200,{'items':self.archive.search_podcasts(query.get('term',[''])[0]),'country':'AU','provider':'Apple Podcasts'})
+                try: return self.reply(200,{'items':self.archive.search_podcasts(query.get('term',[''])[0],account),'country':'AU','provider':'Apple Podcasts'})
                 except CatalogueRateLimited: return self.reply(429,{'error':'Catalogue search is busy. Try again in a minute.'})
                 except CatalogueUnavailable: return self.reply(502,{'error':'Apple Podcasts search is unavailable. Try again later or add an RSS feed.'})
             if path == '/api/feeds':
-                return self.reply(200,{'items':self.archive.rows('SELECT f.*, (SELECT COUNT(*) FROM episodes e WHERE e.feed_id=f.id AND e.file IS NOT NULL) AS downloaded FROM feeds f ORDER BY title')})
+                return self.reply(200,{'items':self.archive.feeds(account)})
             if path == '/api/episodes':
-                return self.reply(200,{'items':self.archive.episodes(query.get('feed_id',[None])[0],query.get('unplayed',['false'])[0]=='true',int(query.get('offset',['0'])[0]),int(query.get('limit',['100'])[0]),query.get('order',['newest'])[0],query.get('hide_played',['false'])[0]=='true')})
+                return self.reply(200,{'items':self.archive.episodes(query.get('feed_id',[None])[0],query.get('unplayed',['false'])[0]=='true',int(query.get('offset',['0'])[0]),int(query.get('limit',['100'])[0]),query.get('order',['newest'])[0],query.get('hide_played',['false'])[0]=='true',account)})
             match = re.fullmatch(r'/api/episodes/([a-f0-9]{32})/audio',path)
-            if match: return self.audio(match[1])
+            if match: return self.audio(match[1],account)
             return self.reply(404,{'error':'Not found'})
         except (ValueError,KeyError): self.reply(400,{'error':'Invalid request'})
         except (BrokenPipeError,ConnectionResetError): pass
@@ -559,45 +692,65 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(body,dict): raise ValueError('JSON object required')
             path = urlsplit(self.path).path
             if path == '/api/auth/login':
-                try: token=self.archive.login(body.get('password'))
-                except CatalogueRateLimited: return self.reply(429,{'error':'Too many sign-in attempts. Try again in a minute.'})
-                if token is None: return self.reply(401,{'error':'Incorrect password'})
-                return self.reply(200,{'access_token':token},session=token)
-            if not self.authorized(): return self.reply(401,{'error':'Sign in required'})
+                with self.archive.auth_lock:
+                    try: token=self.archive.login(body.get('password'),body.get('username','owner'))
+                    except CatalogueRateLimited: return self.reply(429,{'error':'Too many sign-in attempts. Try again in a minute.'})
+                    except ValueError: token=None
+                    if token is None: return self.reply(401,{'error':'Incorrect username or password'})
+                    identity = self.identity(self.archive.authenticated(token))
+                return self.reply(200,{'access_token':token,**identity},session=token)
+            account = self.request_account()
+            if account is None: return self.reply(401,{'error':'Sign in required'})
             if path == '/api/auth/password':
                 with self.archive.auth_lock:
+                    if self.archive.authenticated(self.request_token()) != account:
+                        return self.reply(401,{'error':'Sign in required'})
                     if self.archive.password_set():
-                        try: valid=self.archive.verify_password(body.get('current_password'))
+                        try: valid=self.archive.verify_password(body.get('current_password'),account)
                         except CatalogueRateLimited: return self.reply(429,{'error':'Too many sign-in attempts. Try again in a minute.'})
                         if not valid: return self.reply(401,{'error':'Current password is incorrect'})
-                    try: token=self.archive.set_password(body.get('new_password'))
+                    try: token=self.archive.set_password(body.get('new_password'),account)
                     except ValueError: return self.reply(400,{'error':'Choose a password with 10–256 characters'})
-                return self.reply(200,{'access_token':token},session=token)
+                return self.reply(200,{'access_token':token,**self.identity(account)},session=token)
             if path == '/api/auth/logout':
                 self.archive.logout(self.request_token())
                 return self.reply(200,{'signed_out':True},session='')
             if path == '/api/feeds':
-                feed_id = self.archive.subscribe(body.get('title','Podcast'),body['url'],body.get('mode','future'),body.get('years',0),body.get('since'),body.get('only_if_new') is True)
+                feed_id = self.archive.subscribe(body.get('title','Podcast'),body['url'],body.get('mode','future'),body.get('years',0),body.get('since'),body.get('only_if_new') is True,account)
                 return self.reply(201,{'id':feed_id})
-            match = re.fullmatch(r'/api/feeds/([a-f0-9]{32})/refresh',path)
+            admin = re.fullmatch(r'/api/admin/accounts(?:/([1-9][0-9]{0,17}))?',path)
+            if admin:
+                with self.archive.auth_lock:
+                    if self.archive.authenticated(self.request_token()) != OWNER or not self.archive.password_set():
+                        return self.reply(403,{'error':'Owner access required'})
+                    try:
+                        if admin[1]: self.archive.manage_account(int(admin[1]),body)
+                        else: self.archive.create_account(body.get('username'),body.get('password'))
+                    except ValueError as exc: return self.reply(400,{'error':str(exc)})
+                return self.reply(200 if admin[1] else 201,{'saved':True})
+            match = re.fullmatch(r'/api/feeds/([a-f0-9]{32})/(refresh|unsubscribe)',path)
             if match:
+                if match[2] == 'unsubscribe':
+                    self.archive.unsubscribe(account,match[1])
+                    return self.reply(200,{'unsubscribed':True})
                 with self.archive.lock,self.archive.db:
+                    self.archive.require_feed(account,match[1])
                     self.archive.db.execute('UPDATE feeds SET last_refresh=NULL WHERE id=?',(match[1],))
                 return self.reply(202,{'queued':True})
             match = re.fullmatch(r'/api/progress/([a-f0-9]{32})',path)
-            if match: return self.reply(200,self.archive.progress(match[1],body))
+            if match: return self.reply(200,self.archive.progress(match[1],body,account))
             match = re.fullmatch(r'/api/episodes/([a-f0-9]{32})/download',path)
             if match:
-                with self.archive.lock,self.archive.db:
-                    self.archive.db.execute('UPDATE episodes SET eligible=1,requested=1,retry_at=0 WHERE id=?',(match[1],))
+                self.archive.request_download(account,match[1])
                 return self.reply(202,{'queued':True})
             return self.reply(404,{'error':'Not found'})
         except KeyError: self.reply(404,{'error':'Unknown episode or missing field'})
         except (ValueError,TypeError,OverflowError): self.reply(400,{'error':'Invalid request'})
         except Exception:
             LOG.exception('Request failed'); self.reply(500,{'error':'Server error'})
-    def audio(self, episode_id):
-        rows = self.archive.rows('SELECT file FROM episodes WHERE id=?',(episode_id,))
+    def audio(self, episode_id, account_id):
+        rows = self.archive.rows("""SELECT e.file FROM episodes e JOIN subscriptions s ON s.feed_id=e.feed_id
+            WHERE e.id=? AND s.account_id=? AND s.active=1""",(episode_id,account_id))
         if not rows or not rows[0]['file']: return self.reply(404,{'error':'Episode has not downloaded yet'})
         file = self.archive.media/rows[0]['file']
         size = file.stat().st_size

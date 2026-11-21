@@ -227,6 +227,12 @@ public final class DesktopIntegrationTest {
             podcasts.sync();
             assert podcasts.journal().getJSONArray("events").isEmpty();
             assert podcasts.episode(id).getDouble("position") == 12.5;
+            PodcastApi listener = PodcastApi.login(api.server, "listener", "synthetic listener password");
+            assert api.storageAccount().equals("RewindampPodcastOwner") && !listener.storageAccount().equals(api.storageAccount());
+            PodcastState other = new PodcastState(listener, new DesktopStore(directory, listener.server, listener.storageAccount()));
+            JSONObject sameEpisode = other.episodes(null, false, 0).get(0);
+            assert sameEpisode.getString("id").equals(id) && sameEpisode.getDouble("position") == 0;
+            assert other.feeds().getJSONObject(0).getString("mode").equals("manual");
         } finally {
             jellyfin.request("POST", "/Sessions/Logout", null);
         }

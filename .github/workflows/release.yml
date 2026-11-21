@@ -39,7 +39,11 @@ jobs:
       - name: Provide isolated server dependency to the selected source
         run: |
           mkdir -p server
-          cp .ci-support/scripts/fixtures/server.py server/server.py
+          if [[ -f scripts/fixtures/server.py ]]; then
+            cp scripts/fixtures/server.py server/server.py
+          else
+            cp .ci-support/scripts/fixtures/server.py server/server.py
+          fi
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -71,7 +75,11 @@ jobs:
           profile: pixel_2
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: ./scripts/podcast-integration-test.sh
+          script: |
+            if grep -q 'void signsInWithNamedAccountAndPreservesSeparateStorage' app/src/androidTest/java/dev/rewindamp/PodcastIntegrationTest.java; then
+              export PODCAST_TEST_CLASSES="dev.rewindamp.PodcastIntegrationTest#signsInWithNamedAccountAndPreservesSeparateStorage,$PODCAST_TEST_CLASSES"
+            fi
+            ./scripts/podcast-integration-test.sh
       - name: Preserve emulator test diagnostics
         if: failure()
         uses: actions/upload-artifact@v4

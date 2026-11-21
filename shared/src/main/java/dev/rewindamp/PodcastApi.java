@@ -7,13 +7,25 @@ import java.nio.charset.StandardCharsets;
 
 /** Independent server credentials: never put tokens into media URLs or music sessions. */
 final class PodcastApi {
-    final String server,token;
-    PodcastApi(String server,String token){this.server=JellyfinApi.normalizeServer(server);this.token=token.trim();}
-    static PodcastApi login(String server,String password)throws Exception{
-        PodcastApi anonymous=new PodcastApi(server,"");
-        JSONObject result=anonymous.request("/api/auth/login",new JSONObject().put("password",password));
-        return new PodcastApi(anonymous.server,result.getString("access_token"));
+    final String server,token,account;
+    PodcastApi(String server,String token){this(server,token,"1");}
+    PodcastApi(String server,String token,String account){
+        if(!account.matches("[1-9][0-9]{0,18}"))throw new IllegalArgumentException("Invalid podcast account");
+        this.server=JellyfinApi.normalizeServer(server);this.token=token.trim();this.account=account;
     }
+    static PodcastApi login(String server,String password)throws Exception{
+        return login(server,"owner",password);
+    }
+    static PodcastApi login(String server,String username,String password)throws Exception{
+        String user=username.trim();
+        if(user.isEmpty())user="owner";
+        PodcastApi anonymous=new PodcastApi(server,"");
+        JSONObject result=anonymous.request("/api/auth/login",new JSONObject().put("username",user).put("password",password));
+        if(!user.equalsIgnoreCase("owner")&&!user.equalsIgnoreCase(result.optString("username")))
+            throw new java.io.IOException("The podcast server did not sign in this user");
+        return new PodcastApi(anonymous.server,result.getString("access_token"),result.optString("account_id","1"));
+    }
+    String storageAccount(){return account.equals("1")?"RewindampPodcastOwner":"RewindampPodcastAccount:"+account;}
     String authorization(){return "Bearer "+token;}
     JSONObject request(String path,JSONObject body)throws Exception{
         HttpURLConnection c=(HttpURLConnection)new URL(server+path).openConnection();

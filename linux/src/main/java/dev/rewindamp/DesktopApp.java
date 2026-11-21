@@ -313,7 +313,7 @@ final class DesktopApp {
         });
         async(() -> DesktopSecrets.load("podcasts"), state -> {
             if (state.has("token") && podcasts == null && !connectingPodcasts)
-                installPodcasts(new PodcastApi(state.getString("server"), state.getString("token")));
+                installPodcasts(new PodcastApi(state.getString("server"), state.getString("token"), state.optString("account", "1")));
         });
     }
 
@@ -410,14 +410,14 @@ final class DesktopApp {
             });
             return;
         }
-        Login login = login(frame, "Connect Rewindamp Podcasts", preferences.read("addresses").optString("podcasts", "https://"), false);
+        Login login = login(frame, "Connect Rewindamp Podcasts", preferences.read("addresses").optString("podcasts", "https://"), true);
         if (login == null) return;
         connectingPodcasts = true;
         say("Connecting to the podcast archive…");
         async(() -> {
-            PodcastApi api = PodcastApi.login(login.address, login.password);
+            PodcastApi api = PodcastApi.login(login.address, login.user, login.password);
             api.request("/api/feeds", null);
-            return new Connection<>(api, DesktopSecrets.save("podcasts", new JSONObject().put("server", api.server).put("token", api.token)));
+            return new Connection<>(api, DesktopSecrets.save("podcasts", new JSONObject().put("server", api.server).put("token", api.token).put("account", api.account)));
         }, result -> {
             connectingPodcasts = false;
             installPodcasts(result.api);
@@ -426,7 +426,7 @@ final class DesktopApp {
     }
 
     private void installPodcasts(PodcastApi api) {
-        DesktopStore store = new DesktopStore(data, api.server, "RewindampPodcastOwner");
+        DesktopStore store = new DesktopStore(data, api.server, api.storageAccount());
         podcasts = new PodcastState(api, store);
         Downloads downloads = new Downloads(store, id -> new MediaSource(api.audio(id), api.authorization(), null));
         downloads.networkAllowed(false);
@@ -1078,7 +1078,7 @@ final class DesktopApp {
         if (podcasts == null) { podcastConnection(); return; }
         String[] actions = {"Offline downloads", "Sleep timer · " + podcasts.sleepDescription(),
             podcasts.showPlayed() ? "Exclude played and dismissed episodes from new queues" : "Include played and dismissed episodes in new queues",
-            "Refresh feeds on server", "Subscribe by RSS URL", "Sync listening history"};
+            "Refresh feeds on server", "Subscribe by RSS URL", "Sync listening history", "Unsubscribe from selected show"};
         switch (choose("Podcast settings", List.of(actions))) {
             case 0 -> downloadSettings(podcastDeck);
             case 1 -> sleep();
@@ -1104,6 +1104,14 @@ final class DesktopApp {
             }
             case 5 -> async(() -> { PodcastState connection = podcasts; if (connection != null) connection.sync(); return null; },
                 ignored -> { loadEpisodes(); say("Podcast sync attempted"); });
+            case 6 -> {
+                String selected = feed;
+                if (selected == null) { say("Choose a show first"); return; }
+                PodcastState connection = podcasts;
+                if (!confirm("Unsubscribe from this show?", "Your listening history and the shared archive are kept.")) return;
+                async(() -> connection.api.request("/api/feeds/" + UrlEncoding.encode(selected) + "/unsubscribe", new JSONObject()),
+                    ignored -> { if (connection == podcasts) { loadFeeds(); say("Unsubscribed"); } });
+            }
             default -> {}
         }
     }
