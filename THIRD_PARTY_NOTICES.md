@@ -22,3 +22,6 @@ source and published artefacts for their complete notices and transitive depende
 The Linux build uses JSON-java (public domain) from Maven Central and packages the Java 17
 runtime supplied by the build JDK. Runtime license files ship with the generated runtime.
 FFmpeg, PulseAudio utilities, Secret Service tools and PyGObject are distribution dependencies.
+The AppImage embeds the AppImage type-2 runtime. The runtime's
+`--appimage-help` lists its statically linked components and their license notices.
+Upstream source and build instructions: https://github.com/AppImage/type2-runtime/tree/20251108

@@ -24,7 +24,7 @@ jobs:
       - name: Install Linux test dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg pulseaudio pulseaudio-utils
+          sudo apt-get install -y ffmpeg pulseaudio pulseaudio-utils squashfs-tools zsync
       - name: Test with a disposable audio sink
         run: |
           pulseaudio --start --exit-idle-time=-1
@@ -37,6 +37,7 @@ jobs:
         with:
           name: rewindamp-linux
           path: |
-            linux/build/Rewindamp-*-linux-*.deb
-            linux/build/Rewindamp-*-linux-*.deb.sha256
+            linux/build/Rewindamp-*-linux-x86_64.AppImage
+            linux/build/Rewindamp-*-linux-x86_64.AppImage.zsync
+            linux/build/Rewindamp-*-linux-x86_64.AppImage.sha256
           if-no-files-found: error

@@ -156,12 +156,11 @@ jobs:
           fi
           mkdir -p release-assets
           cp "$apk" "release-assets/Rewindamp-$version.apk"
-          deb="Rewindamp-$version-linux-amd64.deb"
-          cp "linux-assets/$deb" "linux-assets/$deb.sha256" release-assets/
-          test "$(dpkg-deb --field "release-assets/$deb" Package)" = rewindamp
-          test "$(dpkg-deb --field "release-assets/$deb" Version)" = "$version"
-          test "$(dpkg-deb --field "release-assets/$deb" Architecture)" = amd64
-          (cd release-assets && sha256sum --check "$deb.sha256" && sha256sum "Rewindamp-$version.apk" > SHA256SUMS)
+          image="Rewindamp-$version-linux-x86_64.AppImage"
+          cp "linux-assets/$image" "linux-assets/$image.zsync" "linux-assets/$image.sha256" release-assets/
+          update='gh-releases-zsync|rknell|rewindamp|latest|Rewindamp-*-linux-x86_64.AppImage.zsync'
+          readelf -p .upd_info "release-assets/$image" | grep -Fq "$update"
+          (cd release-assets && sha256sum --check "$image.sha256" && sha256sum "Rewindamp-$version.apk" > SHA256SUMS)
           echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
@@ -191,7 +190,7 @@ jobs:
           PY
           mkdir /tmp/downloaded-release
           gh release download "$RELEASE_TAG" --dir /tmp/downloaded-release
-          (cd /tmp/downloaded-release && sha256sum --check SHA256SUMS && sha256sum --check "Rewindamp-$RELEASE_VERSION-linux-amd64.deb.sha256")
+          (cd /tmp/downloaded-release && sha256sum --check SHA256SUMS && sha256sum --check "Rewindamp-$RELEASE_VERSION-linux-x86_64.AppImage.sha256")
           cmp release-assets/SHA256SUMS /tmp/downloaded-release/SHA256SUMS
           gh release edit "$RELEASE_TAG" --draft=false --latest
       - name: Remove private signing key

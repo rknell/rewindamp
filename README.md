@@ -28,7 +28,7 @@ no original Winamp skin images are bundled. Demo mode uses fictional titles.
 
 ## Linux desktop
 
-Rewindamp also runs as a standalone Linux desktop app. Get the amd64 Debian package from [GitHub Releases](https://github.com/rknell/rewindamp/releases/latest). See the [Linux build and installation guide](linux/README.md) and [parity checklist](docs/client-parity.md).
+Rewindamp also runs as a standalone Linux desktop app. Get the x86-64 AppImage from [GitHub Releases](https://github.com/rknell/rewindamp/releases/latest). See the [Linux build and installation guide](linux/README.md) and [parity checklist](docs/client-parity.md).
 
 <img src="docs/images/linux-player.png" width="680" alt="Rewindamp on Linux playing demo audio with the retro LCD, transport, equalizer and library wheels" />
 
@@ -53,7 +53,7 @@ password. Podcast discovery uses the Rewindamp server and requires no Apple acco
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Current source version is **0.4.19**.
+old Jellyamp app data is not automatically migrated. Current source version is **0.4.21**.
 Music and podcast decks share a horizontal metal destination wheel for Music / Podcasts /
 Queue, including their connection screens. Dragging highlights each newly selected
 destination in green and gives a haptic tick at every detent, like the vertical letter
@@ -103,7 +103,7 @@ are kept; phone files remain private to this app and server.
 Get the APK from [GitHub Releases](https://github.com/rknell/rewindamp/releases/latest),
 install it, and sign in to your Jellyfin server. To receive updates through **Obtainium**,
 choose **Add app** and paste `https://github.com/rknell/rewindamp`. Published releases include
-one APK and its checksum alongside the Linux package and its checksum. Use HTTPS outside a trusted home network.
+one APK and its checksum alongside the Linux AppImage, update metadata and checksums. Use HTTPS outside a trusted home network.
 Server base paths are supported. You can explore Demo mode before connecting.
 
 The existing published **0.3.6** release uses the former Jellyamp name and application ID.

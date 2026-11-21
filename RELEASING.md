@@ -2,8 +2,9 @@
 
 Android and Linux updates are delivered through GitHub Releases in `rknell/rewindamp`.
 In Obtainium, add `https://github.com/rknell/rewindamp` as a GitHub source.
-Each stable release contains one `Rewindamp-<version>.apk` with `SHA256SUMS`, and one amd64
-Debian package with its `.deb.sha256` file.
+Each stable release contains one `Rewindamp-<version>.apk` with `SHA256SUMS`, and one
+x86-64 Linux AppImage with its matching `.zsync` update metadata and `.sha256` file.
+Keep the AppImage filename pattern and embedded `latest` update channel stable for Gear Lever.
 
 1. Increase `versionCode` and `versionName` in `app/build.gradle`. Both must advance
    for every published update, including updates previously distributed locally.

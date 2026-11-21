@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+for command in ffmpeg pacat; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+        message="Rewindamp needs $command on this system. Install ffmpeg and pulseaudio-utils on Ubuntu or Linux Mint."
+        printf '%s\n' "$message" >&2
+        if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v zenity >/dev/null 2>&1; then
+            zenity --error --title=Rewindamp --text="$message" || :
+        fi
+        exit 1
+    fi
+done
+exec "$root/bin/Rewindamp" "$@"

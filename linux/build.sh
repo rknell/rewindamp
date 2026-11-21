@@ -31,33 +31,49 @@ case "${1:-}" in
         ;;
     --package)
         version=$(sed -n "s/.*versionName '\([^']*\)'.*/\1/p" app/build.gradle)
-        arch=$(dpkg --print-architecture)
+        [[ "$(uname -m)" == x86_64 ]] || { echo 'Release AppImages target x86_64.' >&2; exit 1; }
+        command -v zsyncmake >/dev/null || { echo 'Install zsync to build AppImage update metadata.' >&2; exit 1; }
         stage=$(mktemp -d "$out/package.XXXXXXXX")
         trap 'rm -rf "$stage"' EXIT
         jpackage --type app-image --name Rewindamp --app-version "$version" --input "$out/input" --dest "$stage/image" \
             --main-jar rewindamp.jar --main-class dev.rewindamp.DesktopApp --add-modules java.desktop,jdk.httpserver,jdk.crypto.ec
-        root="$stage/deb"
-        install -d "$root/opt" "$root/usr/bin" "$root/usr/share/applications" "$root/usr/share/doc/rewindamp" "$root/DEBIAN"
-        mv "$stage/image/Rewindamp" "$root/opt/rewindamp"
-        ln -s /opt/rewindamp/bin/Rewindamp "$root/usr/bin/rewindamp"
-        install -m 644 linux/resources/dev.rewindamp.desktop "$root/usr/share/applications/"
-        install -Dm644 linux/resources/dev.rewindamp.svg "$root/usr/share/icons/hicolor/scalable/apps/dev.rewindamp.svg"
+        root="$stage/Rewindamp.AppDir"
+        mv "$stage/image/Rewindamp" "$root"
+        install -m755 linux/resources/AppRun "$root/"
+        install -m644 linux/resources/dev.rewindamp.desktop linux/resources/dev.rewindamp.svg "$root/"
+        ln -s dev.rewindamp.svg "$root/.DirIcon"
+        install -d "$root/usr/share/doc/rewindamp"
         install -m644 LICENSE THIRD_PARTY_NOTICES.md "$root/usr/share/doc/rewindamp/"
-        cat > "$root/DEBIAN/control" <<CONTROL
-Package: rewindamp
-Version: $version
-Section: sound
-Priority: optional
-Architecture: $arch
-Maintainer: Rewindamp contributors <rknell@users.noreply.github.com>
-Homepage: https://github.com/rknell/rewindamp
-Depends: ffmpeg, pulseaudio-utils, libsecret-tools, python3-gi, gir1.2-glib-2.0, libx11-6, libxext6, libxi6, libxrender1, libxtst6, libfreetype6, libfontconfig1, fonts-dejavu-core
-Description: Rewindamp desktop player for Jellyfin and podcast archives
- Browse music, build queues, and play your own music and podcasts.
-CONTROL
-        package="Rewindamp-$version-linux-$arch.deb"
-        dpkg-deb --root-owner-group --build "$root" "$out/$package"
-        (cd "$out" && sha256sum "$package" > "$package.sha256")
+
+        mkdir -p "$out/tools"
+        appimagetool="$out/tools/appimagetool-1.9.1"
+        runtime="$out/tools/runtime-x86_64-20251108"
+        fetch() {
+            local url=$1 path=$2 digest=$3
+            if [[ ! -f "$path" ]] || ! sha256sum --status -c <<< "$digest  $path"; then
+                curl --fail --silent --show-error --location --retry 3 "$url" -o "$path.tmp"
+                sha256sum -c <<< "$digest  $path.tmp"
+                mv "$path.tmp" "$path"
+            fi
+        }
+        fetch https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage \
+            "$appimagetool" ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+        fetch https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64 \
+            "$runtime" 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+        chmod +x "$appimagetool"
+
+        package="Rewindamp-$version-linux-x86_64.AppImage"
+        update='gh-releases-zsync|rknell|rewindamp|latest|Rewindamp-*-linux-x86_64.AppImage.zsync'
+        (
+            cd "$stage"
+            ARCH=x86_64 VERSION="$version" "$appimagetool" --appimage-extract-and-run --no-appstream \
+                --runtime-file "$runtime" --updateinformation "$update" --file-url "$package" \
+                "$root" "$package"
+            test "$(./"$package" --appimage-updateinformation)" = "$update"
+            grep -aFxq "URL: $package" "$package.zsync"
+            sha256sum "$package" "$package.zsync" > "$package.sha256"
+            mv "$package" "$package.zsync" "$package.sha256" "$out/"
+        )
         ;;
     "") ;;
     *) printf 'Usage: %s [--run|--test|--package]\n' "$0" >&2; exit 2 ;;
