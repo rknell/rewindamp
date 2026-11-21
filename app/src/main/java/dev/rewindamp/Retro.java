@@ -13,7 +13,7 @@ import java.util.function.Consumer;
 
 /** Drawn at native resolution: no screenshot backgrounds or scaled bitmap controls. */
 final class Retro {
-    static final int BG=0xFF171723,PANEL=0xFF29293D,GREEN=0xFF25F11B,MUTED=0xFF9DA5B2,WHITE=0xFFE1E4E7,LCD=0xFF030604,GOLD=0xFFCEBE7A;
+    static final int BG=Skin.BG,PANEL=Skin.PANEL,GREEN=Skin.GREEN,MUTED=Skin.MUTED,WHITE=Skin.WHITE,LCD=Skin.LCD,GOLD=Skin.GOLD;
     static final Typeface MONO=Typeface.create("monospace",Typeface.NORMAL);
     static int dp(Context context,int value){return Math.round(value*context.getResources().getDisplayMetrics().density);}
     /** Quiet secondary actions keep the metal treatment reserved for primary controls. */
@@ -48,7 +48,7 @@ final class Retro {
             c.drawColor(PANEL);p.setTypeface(Typeface.create("sans-serif-condensed",Typeface.BOLD));p.setTextSize(11*d);float tw=p.measureText(title),x=(w-tw)/2;
             rail(c,6*d,x-8*d,h,d);rail(c,x+tw+8*d,w-6*d,h,d);p.setColor(WHITE);c.drawText(title,x,h/2+4*d,p);
         }
-        void rail(Canvas c,float left,float right,float h,float d){if(right<left)return;p.setColor(0xFF8F8051);c.drawRect(left,h/2-3*d,right,h/2+3*d,p);p.setColor(0xFFF6EFC2);c.drawRect(left,h/2-3*d,right,h/2-1*d,p);p.setColor(0xFFD4C583);c.drawRect(left,h/2,right,h/2+d,p);}
+        void rail(Canvas c,float left,float right,float h,float d){if(right<left)return;p.setColor(Skin.RAIL_EDGE);c.drawRect(left,h/2-3*d,right,h/2+3*d,p);p.setColor(Skin.RAIL_LIGHT);c.drawRect(left,h/2-3*d,right,h/2-1*d,p);p.setColor(Skin.RAIL_MID);c.drawRect(left,h/2,right,h/2+d,p);}
     }
     static DestinationWheel navigationBar(android.app.Activity activity,boolean podcasts){
         int selected=podcasts?1:activity instanceof MainActivity main&&main.queue()?2:0;
@@ -76,7 +76,7 @@ final class Retro {
         MetalButton(Context c,String label){super(c);setAllCaps(false);setText(label);setTextSize(10);setTypeface(Typeface.create("sans-serif-condensed",Typeface.BOLD));setTextColor(0xFF283A46);setGravity(android.view.Gravity.CENTER);setPadding(2,0,2,0);setMinimumWidth(0);setMinWidth(0);setMinimumHeight(0);setMinHeight(0);setBackground(null);}
         MetalButton icon(String value){if(symbol.equals(value))return this;symbol=value;invalidate();setText("");setContentDescription(switch(value){case "previous"->"Previous track";case "next"->"Next track";case "play"->"Play";case "pause"->"Pause";case "stop"->"Stop";case "settings"->"Settings";case "back15"->"Jump back 15 seconds";case "forward30"->"Jump forward 30 seconds";case "edit"->"Edit subscription";default->"Browse music";});return this;}
         @Override protected void onDraw(Canvas c){float d=getResources().getDisplayMetrics().density;float l=2*d,t=Math.max(2*d,(getHeight()-30*d)/2),r=getWidth()-2*d,b=getHeight()-t;
-            p.setShader(new LinearGradient(0,t,0,b,new int[]{0xFFF1F5F5,0xFFA9BBC5,0xFFCCD7DC},null,Shader.TileMode.CLAMP));c.drawRect(l,t,r,b,p);p.setShader(null);
+            p.setShader(new LinearGradient(0,t,0,b,new int[]{Skin.METAL_LIGHT,Skin.METAL_MID,Skin.METAL_BASE},null,Shader.TileMode.CLAMP));c.drawRect(l,t,r,b,p);p.setShader(null);
             p.setColor(isPressed()?0xFF596E7D:0xFFF3FCFD);c.drawRect(l,t,r,t+2*d,p);c.drawRect(l,t,l+2*d,b,p);p.setColor(0xFF546775);c.drawRect(l,b-2*d,r,b,p);c.drawRect(r-2*d,t,r,b,p);
             p.setColor(0xFF738793);c.drawRect(l+3*d,t+3*d,r-3*d,t+4*d,p);if(isPressed()){p.setColor(0x33000000);c.drawRect(l,t,r,b,p);}
             if(symbol.isEmpty()){super.onDraw(c);return;}
@@ -114,14 +114,13 @@ final class Retro {
     }
     static final class Digits extends View {
         final Paint p=new Paint();String value="00:00";
-        final int[] masks={0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F};
         Digits(Context c){super(c);setContentDescription("Elapsed time");}
         void setTime(String time){value=time;invalidate();}
         @Override protected void onDraw(Canvas c){float units=0;for(char digit:value.toCharArray())units+=digit==':'?.4f:1.2f;
             float h=getHeight()-8f,w=Math.min((getWidth()-4f)/Math.max(1,units),h*.58f),stroke=Math.max(2,w*.08f),x=2,y=4;
             for(char digit:value.toCharArray()){
                 if(digit==':'){p.setColor(GREEN);c.drawRect(x+w*.15f,y+h*.3f,x+w*.15f+stroke,y+h*.3f+stroke,p);c.drawRect(x+w*.15f,y+h*.7f,x+w*.15f+stroke,y+h*.7f+stroke,p);x+=w*.4f;continue;}
-                int mask=digit=='-'?0x40:Character.isDigit(digit)?masks[digit-'0']:0;
+                int mask=Skin.digit(digit);
                 float[][] lines={{x,y,x+w,y+stroke},{x+w-stroke,y,x+w,y+h/2},{x+w-stroke,y+h/2,x+w,y+h},{x,y+h-stroke,x+w,y+h},{x,y+h/2,x+stroke,y+h},{x,y,x+stroke,y+h/2},{x,y+h/2-stroke/2,x+w,y+h/2+stroke/2}};
                 for(int i=0;i<7;i++){p.setColor((mask&(1<<i))!=0?GREEN:0xFF082109);float[] line=lines[i];c.drawRect(line[0],line[1],line[2],line[3],p);}x+=w*1.2f;
             }

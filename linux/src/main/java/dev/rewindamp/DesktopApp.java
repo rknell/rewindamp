@@ -2,6 +2,7 @@ package dev.rewindamp;
 
 import static dev.rewindamp.DesktopTheme.*;
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
@@ -37,13 +38,15 @@ final class DesktopApp {
     private final ExecutorService io = Executors.newFixedThreadPool(5);
     private final JTabbedPane tabs = new JTabbedPane();
     private final Title title = new Title();
-    private final JLabel subtitle = lcd(" ", 13), status = lcd(" ", 12);
-    private final JButton clock = button("0:00", this::toggleTime);
+    private final JLabel subtitle = lcd(" ", 13), status = lcd(" ", 12), audioSource = lcd("JELLYFIN AUDIO", 12);
+    private final Digits clock = new Digits(this::toggleTime);
     private final Spectrum spectrum = new Spectrum();
     private final Artwork artwork = new Artwork();
-    private final JSlider seek = new JSlider(0, 1000);
-    private final JSlider volume = new JSlider(0, 100);
-    private final JPanel transport = row();
+    private final JSlider seek = slider(JSlider.HORIZONTAL, 0, 1000, 0);
+    private final JSlider volume = slider(JSlider.HORIZONTAL, 0, 100, 80);
+    private final JPanel transport = new JPanel(new java.awt.GridLayout(1, 0, 5, 0));
+    private final Rail playerRail = new Rail("REWINDAMP");
+    private JPanel equalizerPanel;
     private final JButton upNext = button("Up next", this::openActiveQueue);
     private final DesktopPlayer player;
     private final DesktopMediaKeys mediaKeys;
@@ -60,9 +63,9 @@ final class DesktopApp {
     private final JComboBox<String> filter = new JComboBox<>(new String[]{"Unplayed inbox", "All available episodes", "Desktop downloads"});
     private final JComboBox<String> order = new JComboBox<>(new String[]{"Newest first", "Oldest first"});
     private final JComboBox<String> queueDeck = new JComboBox<>(new String[]{"Music queue", "Podcast queue"});
-    private final JComboBox<String> letters = new JComboBox<>();
+    private final DesktopWheels.Letters letters = new DesktopWheels.Letters();
     private final JTextField search = new JTextField(25);
-    private final JButton back = button("‹ Back", this::goBack);
+    private final JButton back = quiet("‹ Back", this::goBack);
     private final JButton online = button("Search online", this::openMixarr);
     private final JButton musicConnection = button("Connect Jellyfin", this::musicConnection);
     private final JButton podcastConnection = button("Connect podcasts", this::podcastConnection);
@@ -103,18 +106,37 @@ final class DesktopApp {
             @Override public void windowActivated(WindowEvent event) { visibility(); }
             @Override public void windowDeactivated(WindowEvent event) { visibility(); }
         });
-        frame.setMinimumSize(new Dimension(760, 540));
-        frame.setSize(1020, 710);
+        frame.setMinimumSize(new Dimension(780, 610));
+        frame.setSize(930, 785);
         frame.setLocationByPlatform(true);
         JPanel content = new JPanel(new BorderLayout(0, 8));
         content.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
-        content.add(header(), BorderLayout.NORTH);
+        content.setBackground(BG);
+        status.setForeground(MUTED);
+        status.setBorder(BorderFactory.createEmptyBorder(1, 3, 1, 3));
+        JPanel playerPanel = new JPanel(new BorderLayout(0, 6));
+        playerPanel.setOpaque(false);
+        playerPanel.add(header(), BorderLayout.NORTH);
+        equalizerPanel = equalizerControls();
+        equalizerPanel.setVisible(preferences.read("skin").optBoolean("equalizer", true));
+        playerPanel.add(equalizerPanel, BorderLayout.CENTER);
+        content.add(playerPanel, BorderLayout.NORTH);
+        tabs.setUI(new javax.swing.plaf.basic.BasicTabbedPaneUI() {
+            @Override protected int calculateTabAreaHeight(int placement, int runs, int height) { return 0; }
+            @Override protected java.awt.Insets getContentBorderInsets(int placement) { return new java.awt.Insets(0, 0, 0, 0); }
+            @Override protected void paintTabArea(java.awt.Graphics g, int placement, int selected) {}
+            @Override protected void paintContentBorder(java.awt.Graphics g, int placement, int selected) {}
+        });
         content.add(tabs, BorderLayout.CENTER);
-        content.add(status, BorderLayout.SOUTH);
         tabs.addTab("Music", musicPanel());
         tabs.addTab("Podcasts", podcastPanel());
         tabs.addTab("Queue", queuePanel());
         tabs.setSelectedIndex(Math.max(0, Math.min(2, preferences.read("window").optInt("tab"))));
+        JPanel footer = new JPanel(new BorderLayout(0, 4));
+        footer.setOpaque(false);
+        footer.add(status, BorderLayout.NORTH);
+        footer.add(DesktopWheels.destinations(tabs));
+        content.add(footer, BorderLayout.SOUTH);
         tabs.addChangeListener(event -> {
             preferences.write("window", new JSONObject().put("tab", tabs.getSelectedIndex()));
             if (tabs.getSelectedIndex() == 2) loadQueue();
@@ -130,19 +152,27 @@ final class DesktopApp {
     }
 
     private JPanel header() {
-        JPanel readout = new JPanel(new BorderLayout(14, 0));
+        JPanel readout = new JPanel(new BorderLayout(12, 0));
         readout.setBackground(LCD);
-        readout.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLoweredBevelBorder(),
-            BorderFactory.createEmptyBorder(9, 10, 9, 10)));
-        readout.add(artwork, BorderLayout.WEST);
-        JPanel details = column(lcd("REWINDAMP", 12), title, subtitle);
-        details.setOpaque(false);
-        readout.add(details, BorderLayout.CENTER);
-        JPanel meters = column(clock, spectrum, upNext);
+        readout.setBorder(BorderFactory.createCompoundBorder(bevel(true), BorderFactory.createEmptyBorder(8, 9, 8, 9)));
+        JPanel meters = column(clock, spectrum);
         meters.setOpaque(false);
-        clock.setForeground(GREEN);
-        clock.setToolTipText("Toggle elapsed / remaining time");
-        readout.add(meters, BorderLayout.EAST);
+        clock.setAlignmentX(Component.CENTER_ALIGNMENT);
+        spectrum.setAlignmentX(Component.CENTER_ALIGNMENT);
+        readout.add(meters, BorderLayout.WEST);
+        JPanel details = new JPanel(new BorderLayout(9, 0));
+        details.setOpaque(false);
+        details.add(title, BorderLayout.NORTH);
+        JPanel metadata = new JPanel(new BorderLayout(9, 0));
+        metadata.setOpaque(false);
+        metadata.add(artwork, BorderLayout.WEST);
+        subtitle.setForeground(MUTED);
+        JPanel labels = column(subtitle, audioSource);
+        labels.setOpaque(false);
+        metadata.add(labels, BorderLayout.CENTER);
+        details.add(metadata);
+        readout.add(details);
+        readout.add(upNext, BorderLayout.EAST);
         seek.setValue(0);
         seek.getAccessibleContext().setAccessibleName("Playback position");
         seek.addMouseListener(new MouseAdapter() {
@@ -150,20 +180,29 @@ final class DesktopApp {
             @Override public void mouseReleased(MouseEvent event) { seeking = false; seekFromSlider(); }
         });
         seek.addChangeListener(event -> { if (!updating && !seeking && !seek.getValueIsAdjusting()) seekFromSlider(); });
-        JPanel controls = new JPanel(new BorderLayout());
-        controls.add(transport, BorderLayout.CENTER);
         volume.setValue(Math.round(player.volume * 100));
-        volume.setPreferredSize(new Dimension(105, 30));
+        volume.setPreferredSize(new Dimension(205, 23));
         volume.getAccessibleContext().setAccessibleName("Volume");
         volume.addChangeListener(event -> {
             player.volume(volume.getValue() / 100f);
             if (!volume.getValueIsAdjusting()) { player.saveSettings(); updateMpris(); }
         });
-        controls.add(row(new JLabel("Volume"), volume, button("EQ", this::equalizer), button("Settings", this::settings)), BorderLayout.EAST);
-        JPanel header = new JPanel(new BorderLayout());
-        header.add(readout, BorderLayout.NORTH);
-        header.add(seek, BorderLayout.CENTER);
-        header.add(controls, BorderLayout.SOUTH);
+        JPanel controls = new JPanel(new BorderLayout(8, 0));
+        JLabel volumeLabel = lcd("VOL", 11);
+        volumeLabel.setForeground(GOLD);
+        controls.add(volumeLabel, BorderLayout.WEST);
+        controls.add(volume);
+        controls.add(row(metal("EQ", "Toggle equalizer", this::toggleEqualizer),
+            metal("PL", "Open queue", this::openActiveQueue), metal("⚙", "Settings", this::settings)), BorderLayout.EAST);
+        seek.setPreferredSize(new Dimension(240, 21));
+        JPanel deck = new JPanel(new BorderLayout(0, 3));
+        deck.add(readout, BorderLayout.NORTH);
+        deck.add(column(controls, seek));
+        deck.add(transport, BorderLayout.SOUTH);
+        JPanel header = new JPanel(new BorderLayout(0, 4));
+        header.setBorder(BorderFactory.createCompoundBorder(bevel(false), BorderFactory.createEmptyBorder(4, 6, 6, 6)));
+        header.add(playerRail, BorderLayout.NORTH);
+        header.add(deck);
         return header;
     }
 
@@ -182,27 +221,23 @@ final class DesktopApp {
         search.setToolTipText("Search track titles and artists");
         listen(search, () -> { if (!updating) searchTimer.restart(); });
         search.addActionListener(event -> { searchTimer.stop(); search(); music.list.requestFocusInWindow(); });
-        letters.getAccessibleContext().setAccessibleName("Jump to letter");
-        letters.addActionListener(event -> {
-            if (updating || letters.getSelectedItem() == null) return;
-            String target = letters.getSelectedItem().toString();
+        letters.addChangeListener(event -> {
+            if (updating || letters.letter().isEmpty()) return;
+            String target = letters.letter();
             for (int i = 0; i < music.model.size(); i++) {
                 if (initial(music.model.get(i)).equals(target)) {
+                    updating = true;
                     music.scroll.getViewport().setViewPosition(new java.awt.Point(0, i * music.list.getFixedCellHeight()));
+                    updating = false;
                     break;
                 }
             }
         });
-        letters.addMouseWheelListener(event -> {
-            int next = letters.getSelectedIndex() + Integer.signum(event.getWheelRotation());
-            if (next >= 0 && next < letters.getItemCount()) letters.setSelectedIndex(next);
-            event.consume();
-        });
         music.scroll.getViewport().addChangeListener(event -> {
             int first = music.list.getFirstVisibleIndex();
-            if (letters.isVisible() && first >= 0 && first < music.model.size()) {
+            if (!updating && letters.isVisible() && first >= 0 && first < music.model.size()) {
                 updating = true;
-                letters.setSelectedItem(initial(music.model.get(first)));
+                letters.follow(initial(music.model.get(first)));
                 updating = false;
             }
         });
@@ -213,9 +248,12 @@ final class DesktopApp {
         music.menu(this::musicMenu);
         JPanel panel = new JPanel(new BorderLayout());
         panel.add(column(row(musicConnection, button("Demo", this::demo), button("Refresh", () -> loadMusic(music.anchor())), online, mixarr.summary()),
-            row(back, section, new JLabel("Search"), search, letters, select, button("Actions", () -> musicMenu(null)))), BorderLayout.NORTH);
-        panel.add(music.scroll);
-        return panel;
+            row(back, section, lcd("Search", 12), search, select, metal("⋮", "Music actions", () -> musicMenu(null)))), BorderLayout.NORTH);
+        JPanel browser = new JPanel(new BorderLayout(3, 0));
+        browser.add(music.scroll);
+        browser.add(letters, BorderLayout.EAST);
+        panel.add(browser);
+        return DesktopTheme.panel("MUSIC LIBRARY", panel);
     }
 
     private JPanel podcastPanel() {
@@ -247,7 +285,7 @@ final class DesktopApp {
                 button("Podcast settings", this::podcastSettings)),
             row(shows, filter, order, button("Edit subscription", this::editPass))), BorderLayout.NORTH);
         panel.add(episodes.scroll);
-        return panel;
+        return DesktopTheme.panel("PODCAST LIBRARY", panel);
     }
 
     private JPanel queuePanel() {
@@ -264,7 +302,7 @@ final class DesktopApp {
             button("Undo", () -> { Runnable action = undo; undo = null; if (action != null) action.run(); }),
             button("Actions", () -> queueMenu(null))), BorderLayout.NORTH);
         panel.add(queue.scroll);
-        return panel;
+        return DesktopTheme.panel("REWINDAMP PLAYLIST", panel);
     }
 
     private void restore() {
@@ -571,8 +609,9 @@ final class DesktopApp {
         boolean alphabetical = parent == null && term.isBlank() && List.of("Tracks", "Artists", "Albums", "Favourites").contains(section());
         updating = true;
         letters.setVisible(alphabetical && !rows.isEmpty());
-        letters.removeAllItems();
-        if (alphabetical) rows.stream().map(this::initial).distinct().forEach(letters::addItem);
+        int first = music.list.getFirstVisibleIndex();
+        letters.entries(alphabetical ? rows.stream().map(this::initial).distinct().toList() : List.of(),
+            first >= 0 && first < rows.size() ? initial(rows.get(first)) : "");
         updating = false;
         if (musicDeck != null && tabs.getSelectedIndex() == 0) say(rows.size() + (rows.size() == 1 ? " item" : " items"));
     }
@@ -1188,40 +1227,70 @@ final class DesktopApp {
         player.plan();
     }
 
-    private void equalizer() {
+    private JPanel equalizerControls() {
         Equalizer.Values values = player.equalizer();
-        JCheckBox enabled = new JCheckBox("Enable ten-band equalizer", values.enabled());
+        JButton enabled = metal(values.enabled() ? "EQ ON" : "EQ OFF", "Enable ten-band equalizer", () -> {});
+        enabled.setModel(new JToggleButton.ToggleButtonModel());
+        enabled.setSelected(values.enabled());
         JPanel sliders = new JPanel(new java.awt.GridLayout(1, 11, 4, 0));
         JSlider[] bands = new JSlider[11];
         for (int i = 0; i < bands.length; i++) {
             String label = i == 0 ? "Preamp" : Equalizer.LABELS[i - 1];
-            JSlider slider = new JSlider(JSlider.VERTICAL, -12, 12, Math.round(i == 0 ? values.preamp() : values.gains()[i - 1]));
+            JSlider slider = slider(JSlider.VERTICAL, -12, 12, Math.round(i == 0 ? values.preamp() : values.gains()[i - 1]));
             bands[i] = slider;
-            slider.setMajorTickSpacing(6);
-            slider.setPaintTicks(true);
-            slider.setPreferredSize(new Dimension(38, 155));
+            slider.setPreferredSize(new Dimension(36, 82));
+            slider.setAlignmentX(Component.CENTER_ALIGNMENT);
             slider.setToolTipText(label + " gain");
             slider.getAccessibleContext().setAccessibleName(label + " gain in dB");
-            sliders.add(column(new JLabel(label), slider));
+            JLabel frequency = lcd(i == 0 ? "PRE" : label, 11);
+            frequency.setForeground(MUTED);
+            frequency.setHorizontalAlignment(SwingConstants.CENTER);
+            JPanel band = new JPanel(new BorderLayout());
+            band.add(slider);
+            band.add(frequency, BorderLayout.SOUTH);
+            sliders.add(band);
         }
-        JComboBox<String> presets = new JComboBox<>(new String[]{"Flat", "Rock", "Bass", "Vocal", "Electronic"});
+        JPopupMenu presets = new JPopupMenu();
         Runnable apply = () -> {
             float[] gains = new float[10];
             for (int i = 0; i < gains.length; i++) gains[i] = bands[i + 1].getValue();
             player.equalizer(enabled.isSelected(), bands[0].getValue(), gains);
         };
-        enabled.addActionListener(event -> apply.run());
-        for (JSlider band : bands) band.addChangeListener(event -> apply.run());
-        presets.addActionListener(event -> {
-            float[] gains = Equalizer.preset(String.valueOf(presets.getSelectedItem()));
-            enabled.setSelected(true);
-            bands[0].setValue(0);
-            for (int i = 0; i < gains.length; i++) bands[i + 1].setValue(Math.round(gains[i]));
+        enabled.addItemListener(event -> enabled.setText(enabled.isSelected() ? "EQ ON" : "EQ OFF"));
+        enabled.addActionListener(event -> { apply.run(); player.saveSettings(); });
+        boolean[] settingPreset = {false};
+        for (JSlider band : bands) band.addChangeListener(event -> {
+            if (settingPreset[0]) return;
             apply.run();
+            if (!band.getValueIsAdjusting()) player.saveSettings();
         });
-        if (JOptionPane.showConfirmDialog(frame, column(row(enabled, new JLabel("Preset"), presets), sliders),
-            "Rewindamp equalizer", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) player.saveSettings();
-        else player.equalizer(values.enabled(), values.preamp(), values.gains());
+        for (String name : List.of("Flat", "Rock", "Bass", "Vocal", "Electronic")) {
+            item(presets, name, () -> {
+                float[] gains = Equalizer.preset(name);
+                enabled.setSelected(true);
+                settingPreset[0] = true;
+                bands[0].setValue(0);
+                for (int i = 0; i < gains.length; i++) bands[i + 1].setValue(Math.round(gains[i]));
+                settingPreset[0] = false;
+                apply.run();
+                player.saveSettings();
+            });
+        }
+        JPanel settings = new JPanel(new BorderLayout());
+        JButton choosePreset = button("PRESETS", () -> presets.show(settings, settings.getWidth() - 74, settings.getHeight()));
+        settings.add(enabled, BorderLayout.WEST);
+        JLabel range = lcd("+12 dB    ━━━    −12 dB", 11);
+        range.setForeground(GOLD);
+        range.setHorizontalAlignment(SwingConstants.CENTER);
+        settings.add(range);
+        settings.add(choosePreset, BorderLayout.EAST);
+        return DesktopTheme.panel("REWINDAMP EQUALIZER", column(settings, sliders));
+    }
+
+    private void toggleEqualizer() {
+        boolean visible = !equalizerPanel.isVisible();
+        equalizerPanel.setVisible(visible);
+        preferences.write("skin", new JSONObject().put("equalizer", visible));
     }
 
     private java.awt.TrayIcon tray;
@@ -1283,8 +1352,8 @@ final class DesktopApp {
         Track current = current();
         DesktopPlayer.Deck deck = player.active;
         String key = deck == null || deck.current() == null ? "" : deck.current().key();
-        title.setText(current == null ? "No audio queued" : current.name);
-        subtitle.setText(current == null ? " " : current.subtitle());
+        title.setText(current == null ? "READY WHEN YOU ARE" : current.name);
+        subtitle.setText(current == null ? "SELECT TRACKS TO QUEUE" : current.subtitle());
         if (!key.equals(currentKey)) {
             currentKey = key;
             loadArtwork(deck, current);
@@ -1296,27 +1365,44 @@ final class DesktopApp {
         transport.removeAll();
         boolean podcast = deck != null && deck == podcastDeck;
         int next = deck == null ? -1 : deck.adjacent(1, true);
+        playerRail.setText(podcast ? "REWINDAMP / PODCASTS" : "REWINDAMP");
+        audioSource.setText(podcast ? "REWINDAMP PODCASTS" : "JELLYFIN AUDIO");
+        equalizerPanel.setVisible(!podcast && preferences.read("skin").optBoolean("equalizer", true));
         upNext.setVisible(podcast && next >= 0);
         if (podcast && next >= 0) upNext.setToolTipText("Up next · " + deck.queue.get(next).track().name);
-        JButton previous = button(podcast ? "Previous episode" : "Previous", () -> player.skip(-1));
-        JButton following = button(podcast ? "Next episode" : "Next", () -> player.skip(1));
+        JButton previous = transport("previous", podcast ? "Previous episode" : "Previous track", () -> player.skip(-1));
+        JButton following = transport("next", podcast ? "Next episode" : "Next track", () -> player.skip(1));
         previous.setEnabled(deck != null && deck.adjacent(-1, false) >= 0);
         following.setEnabled(deck != null && deck.adjacent(1, false) >= 0);
         transport.add(previous);
         if (podcast) transport.add(button("−15 s", () -> player.seek(player.position() - 15_000)));
-        JButton play = button(player.playing ? "Pause" : "Play", player::toggle);
-        play.setEnabled(current != null);
+        JButton play = transport(podcast && player.playing ? "pause" : "play", podcast && player.playing ? "Pause" : "Play",
+            podcast ? player::toggle : player::resume);
+        play.setEnabled(current != null && (podcast || !player.playing));
         transport.add(play);
+        if (!podcast) {
+            JButton pause = transport("pause", "Pause", player::pause);
+            JButton stop = transport("stop", "Stop", () -> { player.pause(); player.seek(0); });
+            pause.setEnabled(player.playing);
+            stop.setEnabled(current != null);
+            transport.add(pause);
+            transport.add(stop);
+        }
         if (podcast) transport.add(button("+30 s", () -> player.seek(player.position() + 30_000)));
         transport.add(following);
         if (podcast) transport.add(button(deck.speed + "×", this::speed));
-        else if (deck != null) {
-            transport.add(button(deck.shuffle ? "Shuffle on" : "Shuffle off", () -> {
+        else {
+            transport.add(transport("browse", "Browse music", () -> tabs.setSelectedIndex(0)));
+            JButton shuffle = metal(deck != null && deck.shuffle ? "SHUF ✓" : "SHUF", "Shuffle", () -> {
                 deck.shuffle = !deck.shuffle; deck.rebuildShuffle(); queueEdited(deck);
-            }));
-            transport.add(button(List.of("Repeat off", "Repeat one", "Repeat all").get(deck.repeat), () -> {
+            });
+            JButton repeat = metal(deck == null ? "REP" : List.of("REP", "REP 1", "REP ALL").get(deck.repeat), "Repeat", () -> {
                 deck.repeat = (deck.repeat + 1) % 3; queueEdited(deck);
-            }));
+            });
+            shuffle.setEnabled(deck != null);
+            repeat.setEnabled(deck != null);
+            transport.add(shuffle);
+            transport.add(repeat);
         }
         transport.revalidate();
         transport.repaint();
@@ -1620,7 +1706,7 @@ final class DesktopApp {
             };
             final JLabel art = new JLabel();
             final JLabel title = lcd("", 14);
-            final JLabel second = new JLabel(), handle = lcd("≡", 15);
+            final JLabel second = lcd("", 12), duration = lcd("", 13), handle = lcd("≡", 15);
             {
                 JPanel lines = column(title, second);
                 lines.setOpaque(false);
@@ -1630,21 +1716,27 @@ final class DesktopApp {
                 cell.add(lines, BorderLayout.CENTER);
                 handle.setHorizontalAlignment(SwingConstants.CENTER);
                 handle.setPreferredSize(new Dimension(20, 24));
-                cell.add(handle, BorderLayout.EAST);
+                JPanel trailing = row(duration, handle);
+                trailing.setOpaque(false);
+                cell.add(trailing, BorderLayout.EAST);
             }
             @Override public java.awt.Component getListCellRendererComponent(JList<? extends T> list, T value, int index, boolean selected, boolean focused) {
                 title.putClientProperty("html.disable", true);
                 second.putClientProperty("html.disable", true);
                 title.setText(name.apply(value));
                 second.setText(subtitle.apply(value));
-                art.setIcon(image.apply(value));
+                ImageIcon icon = image.apply(value);
+                art.setIcon(icon == null || icon.getIconWidth() <= 0 ? COVER : icon);
+                Track track = value instanceof Track item ? item : value instanceof DesktopPlayer.Entry entry ? entry.track() : null;
+                duration.setText(track == null || track.duration == 0 ? "" : Track.time(track.duration));
                 handle.setVisible(rows.canReorder.getAsBoolean());
                 if (value instanceof JSONObject episode && episode.optDouble("duration", 0) > 0)
                     progress = Math.max(0, Math.min(1, episode.optDouble("position", 0) / episode.getDouble("duration")));
                 else progress = 0;
-                title.setForeground(selected ? GREEN : INK);
                 second.setForeground(MUTED);
-                cell.setBackground(selected ? list.getSelectionBackground() : index % 2 == 0 ? LCD : new java.awt.Color(23, 32, 33));
+                cell.setBackground(selected ? list.getSelectionBackground() : LCD);
+                cell.setBorder(focused ? BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(GOLD),
+                    BorderFactory.createEmptyBorder(3, 8, 3, 8)) : BorderFactory.createEmptyBorder(4, 9, 4, 9));
                 return cell;
             }
         });
@@ -1662,6 +1754,7 @@ final class DesktopApp {
             list.setFixedCellWidth(1);
             list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
             scroll.getVerticalScrollBar().setUnitIncrement(48);
+            scroll.setBorder(bevel(true));
         }
 
         String key(T item) {

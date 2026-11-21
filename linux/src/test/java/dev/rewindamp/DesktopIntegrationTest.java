@@ -27,6 +27,7 @@ public final class DesktopIntegrationTest {
         Path temp = Files.createTempDirectory("rewindamp-desktop-test");
         try {
             testDsp();
+            testSkin();
             testChapters();
             testFixture(temp);
             testAudio(temp);
@@ -238,6 +239,30 @@ public final class DesktopIntegrationTest {
             waitFor(() -> audio.position() > 12_500 || !events.isEmpty());
             assert events.isEmpty() && audio.position() > 12_500 : events.poll();
         }
+    }
+
+    private static void testSkin() throws Exception {
+        assert Skin.digit('0') == 0x3f && Skin.digit('8') == 0x7f;
+        assert Skin.digit('−') == Skin.digit('-') && Skin.digit(' ') == 0;
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            var letters = new DesktopWheels.Letters();
+            letters.entries(List.of("A", "B", "S"), "B");
+            assert letters.letter().equals("B");
+            letters.getActionMap().get("letter-1").actionPerformed(null);
+            assert letters.letter().equals("S");
+            letters.entries(List.of("A"), "S");
+            assert letters.letter().equals("A");
+            letters.entries(List.of(), "");
+            assert letters.letter().isEmpty();
+
+            var tabs = new javax.swing.JTabbedPane();
+            for (String title : List.of("Music", "Podcasts", "Queue")) tabs.addTab(title, new javax.swing.JPanel());
+            var wheel = DesktopWheels.destinations(tabs);
+            assert ((javax.swing.JToggleButton)wheel.getComponent(1)).getText().equals("MUSIC");
+            ((javax.swing.JToggleButton)wheel.getComponent(2)).doClick(0);
+            assert tabs.getSelectedIndex() == 1;
+            assert ((javax.swing.JToggleButton)wheel.getComponent(1)).isSelected();
+        });
     }
 
     private static void testDsp() {

@@ -1,6 +1,6 @@
 # Android and Linux parity
 
-Both clients compile the Java source in `shared/src/main/java/dev/rewindamp`. It owns the server clients and media models, account scoping, Jellyfin playlist and reporting APIs, podcast journal and subscription passes, Mixarr request history and chapter validation, and ten-band EQ and spectrum processing. The two clients keep their own view, download, secure storage and audio-output adapters. Android retains Media3 and Android Auto. Linux uses a Swing desktop window, FFmpeg, the desktop audio server, Secret Service and MPRIS.
+Both clients compile the Java source in `shared/src/main/java/dev/rewindamp`. It owns the server clients and media models, account scoping, Jellyfin playlist and reporting APIs, podcast journal and subscription passes, Mixarr request history and chapter validation, ten-band EQ and spectrum processing, and the retro skin palette and clock segments. The two clients keep their own view, download, secure storage and audio-output adapters. Android retains Media3 and Android Auto. Linux uses a Swing desktop window, FFmpeg, the desktop audio server, Secret Service and MPRIS.
 
 | Behavior | Android | Linux |
 | --- | --- | --- |
@@ -20,4 +20,4 @@ Both clients compile the Java source in `shared/src/main/java/dev/rewindamp`. It
 
 The Flutter desktop toolchain can build native Linux apps. A move to Flutter would require reimplementing the existing Media3, Android Auto and Keystore integrations and migrating on-device state. The shared Java source keeps the current Android adapters and their tests while both clients use the same protocol and DSP implementation. [Flutter desktop support](https://docs.flutter.dev/platform-integration/desktop)
 
-GitHub verifies both clients on the same checkout for each pull request and release tag. Both packages use the Android source version so a release identifies one set of shared behavior. Verified scope and known differences are recorded in release notes. Library UI parity is behavioral. Matching operating-system gestures, car interfaces and background services requires platform-specific verification.
+GitHub verifies both clients on the same checkout for each pull request and release tag. Both packages use the Android source version so a release identifies one set of shared behavior. Verified scope and known differences are recorded in release notes. Both clients use gold title rails, recessed green displays, beveled metal controls, and letter and destination wheels. Each client draws those controls with its own toolkit. Matching operating-system gestures, car interfaces and background services requires platform-specific verification.

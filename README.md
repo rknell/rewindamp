@@ -30,6 +30,8 @@ no original Winamp skin images are bundled. Demo mode uses fictional titles.
 
 Rewindamp also runs as a standalone Linux desktop app. Get the amd64 Debian package from [GitHub Releases](https://github.com/rknell/rewindamp/releases/latest). See the [Linux build and installation guide](linux/README.md) and [parity checklist](docs/client-parity.md).
 
+<img src="docs/images/linux-player.png" width="680" alt="Rewindamp on Linux playing demo audio with the retro LCD, transport, equalizer and library wheels" />
+
 ## Podcasts and Rewindamp Server
 
 Rewindamp now includes a separate **Podcasts** deck using the same classic metal buttons,
@@ -47,7 +49,7 @@ Android stores an encrypted session token rather than the password. Searches use
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Current source version is **0.4.18**.
+old Jellyamp app data is not automatically migrated. Current source version is **0.4.19**.
 Music and podcast decks share a horizontal metal destination wheel for Music / Podcasts /
 Queue, including their connection screens. Dragging highlights each newly selected
 destination in green and gives a haptic tick at every detent, like the vertical letter
