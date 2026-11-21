@@ -39,4 +39,8 @@ for _ in range(50):
 else:raise RuntimeError('Synthetic podcast fixture did not start')
 WAIT
 python3 scripts/bootstrap-test-server.py
-./gradlew connectedDebugAndroidTest "$@"
+if [[ "${1:-}" == --linux ]]; then
+    ./linux/build.sh --test --shared-fixture
+else
+    ./gradlew connectedDebugAndroidTest "$@"
+fi

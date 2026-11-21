@@ -1,4 +1,4 @@
-# Rewindamp Android
+# Rewindamp clients
 
 Read README.md before changing this app. Build with JDK 17 and Android SDK 35;
 run `./gradlew assembleDebug lintDebug` and relevant isolated integration checks.
@@ -6,8 +6,8 @@ Never use production services or include credentials, app data or signing keys i
 
 ## Delivery preference
 
-The owner wants completed Android updates published to GitHub Releases at
-https://github.com/rknell/rewindamp so Obtainium can install them. Publish a new
+The owner wants completed Android and Linux updates published together to GitHub Releases at
+https://github.com/rknell/rewindamp. Obtainium uses the Android APK. Publish a new
 version after implementing and validating requested changes; return the release link
 instead of a local APK attachment. This is the owner's standing delivery instruction.
 Follow RELEASING.md. Prefer the GitHub Actions release workflow; the existing signing key
@@ -15,8 +15,11 @@ is held in encrypted repository secrets so development need not use this build h
 Increase both versionCode and versionName, include release notes,
 and keep the existing app ID and signing certificate for update compatibility.
 
-The app may be edited inside a larger media-server repository. Publish only the Android
+The app may be edited inside a larger media-server repository. Publish only Rewindamp client
 source from a clean checkout of rknell/rewindamp; never push the parent repository or
 unrelated changes. Exclude build output, local.properties, .gradle, keys and runtime data.
 Signing keys remain private on the build host. If the matching key is unavailable,
 report the blocker; do not silently switch signatures.
+
+For Linux and shared behavior, run the isolated Linux checks in linux/README.md and follow
+docs/client-parity.md. Linux and Android share a release version.

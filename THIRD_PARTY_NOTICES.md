@@ -16,3 +16,9 @@ tools and dependencies. No original Winamp skin assets or Jellyfin server code a
 
 Dependency versions are declared in `app/build.gradle` and `build.gradle`. Consult upstream
 source and published artefacts for their complete notices and transitive dependency licences.
+
+## Linux desktop
+
+The Linux build uses JSON-java (public domain) from Maven Central and packages the Java 17
+runtime supplied by the build JDK. Runtime license files ship with the generated runtime.
+FFmpeg, PulseAudio utilities, Secret Service tools and PyGObject are distribution dependencies.

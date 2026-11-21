@@ -1,28 +1,24 @@
-# Publishing Android updates
+# Publishing Rewindamp updates
 
-Rewindamp updates are delivered through GitHub Releases in `rknell/rewindamp`.
+Android and Linux updates are delivered through GitHub Releases in `rknell/rewindamp`.
 In Obtainium, add `https://github.com/rknell/rewindamp` as a GitHub source.
-Each stable release contains one `Rewindamp-<version>.apk` and `SHA256SUMS`.
+Each stable release contains one `Rewindamp-<version>.apk` with `SHA256SUMS`, and one amd64
+Debian package with its `.deb.sha256` file.
 
 1. Increase `versionCode` and `versionName` in `app/build.gradle`. Both must advance
    for every published update, including updates previously distributed locally.
 2. Add `docs/releases/<version>.md` with the user-visible changes and actual validation.
 3. Run the relevant isolated integration checks. Never test against production.
-4. Commit the Android source to a clean `main` checkout of `rknell/rewindamp`.
-5. With JDK 17, Android SDK 35, authenticated `gh` and Git push access, run:
+4. Commit the Rewindamp client source to a clean `main` checkout of `rknell/rewindamp`.
+5. Use the GitHub workflow below. From a clean standalone checkout with authenticated `gh`
+   and Git push access, `./scripts/release.sh` pushes the version tag and follows the same workflow.
 
-   ```sh
-   ANDROID_HOME=/path/to/android-sdk ./scripts/release.sh
-   ```
+The workflow builds both packages and checks the Android app ID, version and signing certificate.
+It checks uploaded assets before publishing the release as Latest. The script refuses a dirty
+checkout, the wrong repository or an existing tag. If upload fails, inspect the draft and retry
+the workflow for that same version.
 
-The script builds and lints, verifies the package, version and signing certificate,
-atomically pushes the commit and version tag, then uploads assets to a draft release.
-It verifies uploaded asset names and sizes before publishing the release as Latest.
-It refuses a dirty checkout, the wrong repository, an existing tag, or a different signer.
-If upload fails, retain the draft and recover that same release after inspecting it;
-do not issue another version just to retry an upload.
-
-If the working app lives inside the media-server workspace, copy only its source into
+If the working app lives inside the media-server workspace, copy only the Rewindamp client source into
 a clean checkout of `rknell/rewindamp`, excluding `.git`, `.gradle`, all `build/` folders,
 `local.properties`, caches, signing keys, APKs and runtime files. Review the diff before
 committing. Never push the containing media-server repository as an Android release.
@@ -42,11 +38,11 @@ preserve app data when their signer matches.
 
 ## GitHub Actions (preferred)
 
-Run **Actions → Publish Android release → Run workflow** on `main` after committing
+Run **Actions → Publish Rewindamp release → Run workflow** on `main` after committing
 an increased versionCode/versionName and `docs/releases/<version>.md`. The source ref
 field defaults to `main`; choose an existing version tag to retry that exact source. Pushing a
 matching `v<version>` tag also triggers it. The workflow builds with JDK 17/SDK 35,
-runs lint and isolated emulator car/podcast regression tests, checks the application identity and pinned signing certificate, checks
+runs lint and isolated emulator and Linux regression tests, checks the Android application identity and pinned signing certificate, checks
 that both version fields advance, and verifies downloaded assets before publishing.
 A failed upload can be retried against the same draft; published releases are never
 overwritten. Pull requests and pushes to main run the same checks without access to signing secrets.

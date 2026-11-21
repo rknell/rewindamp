@@ -1,4 +1,4 @@
-name: Publish Android release
+name: Publish Rewindamp release
 on:
   workflow_dispatch:
     inputs:
@@ -13,9 +13,13 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: android-release-${{ github.ref }}
+  group: rewindamp-release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  linux:
+    uses: ./.github/workflows/linux.yml
+    with:
+      ref: ${{ inputs.ref || github.ref }}
   verify:
     runs-on: ubuntu-latest
     permissions:
@@ -78,7 +82,7 @@ jobs:
             app/build/reports/androidTests/
   release:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    needs: verify
+    needs: [verify, linux]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -116,6 +120,10 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
       - name: Build and lint
         run: ./gradlew --no-daemon assembleDebug lintDebug
+      - uses: actions/download-artifact@v4
+        with:
+          name: rewindamp-linux
+          path: linux-assets
       - name: Verify identity and prepare assets
         run: |
           set -euo pipefail
@@ -142,7 +150,12 @@ jobs:
           fi
           mkdir -p release-assets
           cp "$apk" "release-assets/Rewindamp-$version.apk"
-          (cd release-assets && sha256sum "Rewindamp-$version.apk" > SHA256SUMS)
+          deb="Rewindamp-$version-linux-amd64.deb"
+          cp "linux-assets/$deb" "linux-assets/$deb.sha256" release-assets/
+          test "$(dpkg-deb --field "release-assets/$deb" Package)" = rewindamp
+          test "$(dpkg-deb --field "release-assets/$deb" Version)" = "$version"
+          test "$(dpkg-deb --field "release-assets/$deb" Architecture)" = amd64
+          (cd release-assets && sha256sum --check "$deb.sha256" && sha256sum "Rewindamp-$version.apk" > SHA256SUMS)
           echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
@@ -172,7 +185,7 @@ jobs:
           PY
           mkdir /tmp/downloaded-release
           gh release download "$RELEASE_TAG" --dir /tmp/downloaded-release
-          (cd /tmp/downloaded-release && sha256sum --check SHA256SUMS)
+          (cd /tmp/downloaded-release && sha256sum --check SHA256SUMS && sha256sum --check "Rewindamp-$RELEASE_VERSION-linux-amd64.deb.sha256")
           cmp release-assets/SHA256SUMS /tmp/downloaded-release/SHA256SUMS
           gh release edit "$RELEASE_TAG" --draft=false --latest
       - name: Remove private signing key

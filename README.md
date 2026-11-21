@@ -26,6 +26,10 @@ phones and Android Auto, and thoughtful UI polish all help. See [Contributing](C
 Independent app; unaffiliated with Winamp or Jellyfin. The interface is drawn natively;
 no original Winamp skin images are bundled. Demo mode uses fictional titles.
 
+## Linux desktop
+
+Rewindamp also runs as a standalone Linux desktop app. Get the amd64 Debian package from [GitHub Releases](https://github.com/rknell/rewindamp/releases/latest). See the [Linux build and installation guide](linux/README.md) and [parity checklist](docs/client-parity.md).
+
 ## Podcasts and Rewindamp Server
 
 Rewindamp now includes a separate **Podcasts** deck using the same classic metal buttons,
@@ -93,7 +97,7 @@ are kept; phone files remain private to this app and server.
 Get the APK from [GitHub Releases](https://github.com/rknell/rewindamp/releases/latest),
 install it, and sign in to your Jellyfin server. To receive updates through **Obtainium**,
 choose **Add app** and paste `https://github.com/rknell/rewindamp`. Published releases include
-one APK and its checksum. Use HTTPS outside a trusted home network.
+one APK and its checksum alongside the Linux package and its checksum. Use HTTPS outside a trusted home network.
 Server base paths are supported. You can explore Demo mode before connecting.
 
 The existing published **0.3.6** release uses the former Jellyamp name and application ID.

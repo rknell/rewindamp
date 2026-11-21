@@ -1,0 +1,42 @@
+name: Verify Linux client
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Linux test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg pulseaudio pulseaudio-utils
+      - name: Test with a disposable audio sink
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          sink_module=$(pactl load-module module-null-sink sink_name=rewindamp_test)
+          trap 'pactl unload-module "$sink_module"' EXIT
+          PULSE_SINK=rewindamp_test ./scripts/integration-test.sh --linux
+      - name: Package Linux
+        run: ./linux/build.sh --package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rewindamp-linux
+          path: |
+            linux/build/Rewindamp-*-linux-*.deb
+            linux/build/Rewindamp-*-linux-*.deb.sha256
+          if-no-files-found: error

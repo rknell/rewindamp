@@ -24,31 +24,17 @@ assert current>previous, 'versionName must exceed the last published release'
 PYVERSION
 previous_code=$(git show "$latest:app/build.gradle" | sed -n 's/.*versionCode \([0-9]*\).*/\1/p')
 (( code > previous_code )) || { echo 'versionCode must exceed the last published release.' >&2; exit 1; }
-sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-[[ -x "$sdk/build-tools/35.0.0/apksigner" ]] || { echo 'Set ANDROID_HOME to an SDK with build-tools 35.0.0.' >&2; exit 1; }
-./gradlew assembleDebug lintDebug
-apk=app/build/outputs/apk/debug/app-debug.apk
-signer=$("$sdk/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-[[ "$signer" == "$(cat release-signing-cert.sha256)" ]] || { echo 'Signing certificate mismatch; do not publish this APK.' >&2; exit 1; }
-badging=$("$sdk/build-tools/35.0.0/aapt" dump badging "$apk")
-[[ "$badging" == *"package: name='dev.rewindamp' versionCode='$code' versionName='$version'"* ]] || { echo 'APK identity/version mismatch.' >&2; exit 1; }
-release_dir=$(mktemp -d)
-trap 'rm -rf "$release_dir"' EXIT
-asset="Rewindamp-$version.apk"
-cp "$apk" "$release_dir/$asset"
-(cd "$release_dir" && sha256sum "$asset" > SHA256SUMS)
 git tag -a "$tag" -F "$notes"
 git push --atomic origin HEAD:main "refs/tags/$tag"
-gh release create "$tag" "$release_dir/$asset" "$release_dir/SHA256SUMS" --repo "$repo" --verify-tag --draft --title "Rewindamp $version" --notes-file "$notes"
-gh release view "$tag" --repo "$repo" --json assets > "$release_dir/assets.json"
-python3 - "$release_dir" "$asset" <<'PY'
-import json,sys
-from pathlib import Path
-root=Path(sys.argv[1]); names={sys.argv[2], 'SHA256SUMS'}
-assets=json.loads((root/'assets.json').read_text())['assets']
-assert {a['name'] for a in assets} == names, 'Release asset names differ'
-for a in assets:
-    assert a['state']=='uploaded' and a['size']==(root/a['name']).stat().st_size, 'Release upload incomplete'
-PY
-gh release edit "$tag" --repo "$repo" --draft=false --latest
-gh release view "$tag" --repo "$repo" --json url --jq .url
+
+for attempt in {1..20}; do
+    run=$(gh run list --repo "$repo" --workflow release.yml --branch "$tag" --event push --limit 1 --json databaseId --jq '.[0].databaseId')
+    if [[ -n "$run" ]]; then
+        gh run watch "$run" --repo "$repo" --exit-status
+        gh release view "$tag" --repo "$repo" --json url --jq .url
+        exit 0
+    fi
+    sleep 2
+done
+echo "GitHub has not returned the release workflow yet. Check Actions for $tag before retrying." >&2
+exit 1

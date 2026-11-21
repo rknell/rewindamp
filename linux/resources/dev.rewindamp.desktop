@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Rewindamp
+Comment=Jellyfin music and Rewindamp podcasts
+Exec=rewindamp
+Icon=dev.rewindamp
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=dev-rewindamp-DesktopApp
