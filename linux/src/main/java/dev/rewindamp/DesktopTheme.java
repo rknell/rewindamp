@@ -369,8 +369,9 @@ final class DesktopTheme {
     }
 
     static final class Artwork extends JComponent {
+        static final int SIZE = 80;
         java.awt.Image picture;
-        Artwork() { setPreferredSize(new Dimension(52, 52)); setToolTipText("Current artwork"); }
+        Artwork() { setPreferredSize(new Dimension(SIZE, SIZE)); setToolTipText("Current artwork"); }
         @Override protected void paintComponent(Graphics graphics) {
             Graphics2D g = (Graphics2D)graphics.create();
             int size = Math.min(getWidth(), getHeight());

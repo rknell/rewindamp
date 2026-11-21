@@ -5,6 +5,7 @@ import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GraphicsEnvironment;
+import java.awt.KeyboardFocusManager;
 import java.awt.Rectangle;
 import java.awt.event.*;
 import java.io.IOException;
@@ -27,6 +28,7 @@ import java.util.function.Consumer;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.text.JTextComponent;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -35,6 +37,7 @@ final class DesktopApp {
     private final Path data;
     private final DesktopStore preferences;
     private final JFrame frame = new JFrame("Rewindamp");
+    private final java.awt.Image appIcon = new ImageIcon(DesktopApp.class.getResource("/dev.rewindamp.png")).getImage();
     private final ExecutorService io = Executors.newFixedThreadPool(5);
     private final JTabbedPane tabs = new JTabbedPane();
     private final Title title = new Title();
@@ -98,6 +101,7 @@ final class DesktopApp {
         player = new DesktopPlayer(preferences, this::playerChanged, this::say);
         mediaKeys = new DesktopMediaKeys(this::mediaCommand);
         mixarr = new DesktopMixarr(frame, io, this::say);
+        frame.setIconImage(appIcon);
         frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent event) { close(); }
@@ -144,11 +148,55 @@ final class DesktopApp {
         });
         searchTimer.setRepeats(false);
         frame.setContentPane(content);
+        installShortcuts();
         frame.setVisible(true);
         if (Boolean.getBoolean("rewindamp.demo")) demo();
         playerChanged();
         restore();
         networkTimer.setRepeats(false);
+    }
+
+    private void installShortcuts() {
+        shortcut(KeyEvent.VK_SPACE, 0, player::toggle);
+        shortcut(KeyEvent.VK_LEFT, 0, () -> jump(false));
+        shortcut(KeyEvent.VK_RIGHT, 0, () -> jump(true));
+        shortcut(KeyEvent.VK_LEFT, InputEvent.CTRL_DOWN_MASK, () -> player.skip(-1));
+        shortcut(KeyEvent.VK_RIGHT, InputEvent.CTRL_DOWN_MASK, () -> player.skip(1));
+        shortcut(KeyEvent.VK_MINUS, InputEvent.CTRL_DOWN_MASK, () -> volume.setValue(volume.getValue() - 5));
+        shortcut(KeyEvent.VK_EQUALS, InputEvent.CTRL_DOWN_MASK, () -> volume.setValue(volume.getValue() + 5));
+        shortcut(KeyEvent.VK_F, InputEvent.CTRL_DOWN_MASK, () -> {
+            tabs.setSelectedIndex(0);
+            search.requestFocusInWindow();
+            search.selectAll();
+        });
+    }
+
+    private void shortcut(int key, int modifiers, Runnable action) {
+        KeyStroke stroke = KeyStroke.getKeyStroke(key, modifiers, modifiers == 0);
+        JRootPane root = frame.getRootPane();
+        root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(stroke, stroke);
+        root.getActionMap().put(stroke, new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent event) {
+                if (MenuSelectionManager.defaultManager().getSelectedPath().length != 0) return;
+                Component focus = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                if (!allowsTransportShortcut(key, focus)) return;
+                action.run();
+            }
+        });
+    }
+
+    static boolean allowsTransportShortcut(int key, Component focus) {
+        if (key != KeyEvent.VK_SPACE && key != KeyEvent.VK_LEFT && key != KeyEvent.VK_RIGHT) return true;
+        return !(focus instanceof JTextComponent || focus instanceof JComboBox<?> || focus instanceof JSlider
+            || focus instanceof JToggleButton || key == KeyEvent.VK_SPACE && focus instanceof AbstractButton);
+    }
+
+    private void jump(boolean forward) {
+        Track track = current();
+        if (track == null) return;
+        long seconds = player.active == podcastDeck ? forward ? 30 : -15 : forward ? 5 : -5;
+        long target = player.position() + seconds * 1000;
+        player.seek(track.duration > 0 ? Math.min(target, track.duration - 1) : target);
     }
 
     private JPanel header() {
@@ -160,16 +208,15 @@ final class DesktopApp {
         clock.setAlignmentX(Component.CENTER_ALIGNMENT);
         spectrum.setAlignmentX(Component.CENTER_ALIGNMENT);
         readout.add(meters, BorderLayout.WEST);
-        JPanel details = new JPanel(new BorderLayout(9, 0));
+        JPanel details = new JPanel(new BorderLayout(12, 0));
         details.setOpaque(false);
-        details.add(title, BorderLayout.NORTH);
-        JPanel metadata = new JPanel(new BorderLayout(9, 0));
-        metadata.setOpaque(false);
-        metadata.add(artwork, BorderLayout.WEST);
+        details.add(artwork, BorderLayout.WEST);
         subtitle.setForeground(MUTED);
-        JPanel labels = column(subtitle, audioSource);
+        JPanel labels = column(title, subtitle, audioSource);
         labels.setOpaque(false);
-        metadata.add(labels, BorderLayout.CENTER);
+        JPanel metadata = new JPanel(new BorderLayout());
+        metadata.setOpaque(false);
+        metadata.add(labels, BorderLayout.NORTH);
         details.add(metadata);
         readout.add(details);
         readout.add(upNext, BorderLayout.EAST);
@@ -496,11 +543,11 @@ final class DesktopApp {
     private record Connection<T>(T api, boolean saved) {}
     record Login(String address, String user, String password) {}
 
-    static Login login(JFrame parent, String title, String address, boolean username) {
+    static Login login(Component parent, String title, String address, boolean username) {
         return login(parent, title, address, username, "");
     }
 
-    private static Login login(JFrame parent, String title, String address, boolean username, String initialUser) {
+    private static Login login(Component parent, String title, String address, boolean username, String initialUser) {
         JTextField server = new JTextField(address, 33), user = new JTextField(initialUser, 33);
         JPasswordField pass = new JPasswordField(33);
         JPanel input = column(new JLabel("Server address"), server);
@@ -1343,17 +1390,13 @@ final class DesktopApp {
     private void minimizeToTray() {
         if (!java.awt.SystemTray.isSupported()) { frame.setState(JFrame.ICONIFIED); return; }
         if (tray == null) try {
-            java.awt.image.BufferedImage icon = new java.awt.image.BufferedImage(32, 32, java.awt.image.BufferedImage.TYPE_INT_ARGB);
-            var g = icon.createGraphics();
-            g.setColor(SHELL); g.fillRect(0, 0, 32, 32);
-            g.setColor(GREEN); g.fillPolygon(new int[]{9, 24, 9}, new int[]{6, 16, 26}, 3);
-            g.dispose();
             java.awt.PopupMenu menu = new java.awt.PopupMenu();
             java.awt.MenuItem show = new java.awt.MenuItem("Show Rewindamp"), quit = new java.awt.MenuItem("Quit");
             show.addActionListener(event -> SwingUtilities.invokeLater(this::showWindow));
             quit.addActionListener(event -> SwingUtilities.invokeLater(this::close));
             menu.add(show); menu.add(quit);
-            tray = new java.awt.TrayIcon(icon, "Rewindamp", menu);
+            tray = new java.awt.TrayIcon(appIcon, "Rewindamp", menu);
+            tray.setImageAutoSize(true);
             tray.addActionListener(event -> SwingUtilities.invokeLater(this::showWindow));
             java.awt.SystemTray.getSystemTray().add(tray);
         } catch (java.awt.AWTException e) { say("System tray unavailable"); return; }
@@ -1420,7 +1463,7 @@ final class DesktopApp {
         previous.setEnabled(deck != null && deck.adjacent(-1, false) >= 0);
         following.setEnabled(deck != null && deck.adjacent(1, false) >= 0);
         transport.add(previous);
-        if (podcast) transport.add(button("−15 s", () -> player.seek(player.position() - 15_000)));
+        if (podcast) transport.add(button("−15 s", () -> jump(false)));
         JButton play = transport(podcast && player.playing ? "pause" : "play", podcast && player.playing ? "Pause" : "Play",
             podcast ? player::toggle : player::resume);
         play.setEnabled(current != null && (podcast || !player.playing));
@@ -1433,7 +1476,7 @@ final class DesktopApp {
             transport.add(pause);
             transport.add(stop);
         }
-        if (podcast) transport.add(button("+30 s", () -> player.seek(player.position() + 30_000)));
+        if (podcast) transport.add(button("+30 s", () -> jump(true)));
         transport.add(following);
         if (podcast) transport.add(button(deck.speed + "×", this::speed));
         else {
@@ -1577,7 +1620,7 @@ final class DesktopApp {
         JellyfinApi api = jellyfin;
         String key = artworkKey(current);
         artworkID = key;
-        async(() -> image(deck, api, current, 80), icon -> {
+        async(() -> image(deck, api, current, Artwork.SIZE), icon -> {
             if (deck != musicDeck || !key.equals(artworkID) || current() != current) return;
             artwork.picture = icon.getImage();
             artwork.repaint();
@@ -1626,8 +1669,8 @@ final class DesktopApp {
             case "PlayPause" -> player.toggle();
             case "Pause" -> player.pause();
             case "Stop" -> { player.pause(); player.seek(0); }
-            case "Next" -> { if (podcast) player.seek(player.position() + 30_000); else player.skip(1); }
-            case "Previous" -> { if (podcast) player.seek(player.position() - 15_000); else player.skip(-1); }
+            case "Next" -> { if (podcast) jump(true); else player.skip(1); }
+            case "Previous" -> { if (podcast) jump(false); else player.skip(-1); }
             case "Seek" -> player.seek(player.position() + position / 1000);
             case "SetPosition" -> player.seek(position / 1000);
             case "Volume" -> volume.setValue((int)Math.round(position / 10.0));
@@ -1798,6 +1841,13 @@ final class DesktopApp {
             // The viewport supplies the width. A fixed cell size keeps Swing from measuring every item.
             list.setFixedCellWidth(1);
             list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+            // These lists have one column. Keep their vertical navigation and Ctrl+Space selection.
+            InputMap keys = list.getInputMap();
+            keys.put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "none");
+            for (int key : new int[]{KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT}) {
+                keys.put(KeyStroke.getKeyStroke(key, 0), "none");
+                keys.put(KeyStroke.getKeyStroke(key, InputEvent.CTRL_DOWN_MASK), "none");
+            }
             scroll.getVerticalScrollBar().setUnitIncrement(48);
             scroll.setBorder(bevel(true));
         }

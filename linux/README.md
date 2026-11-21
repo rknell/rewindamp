@@ -24,6 +24,19 @@ Use **Queue** for either saved queue. Click a track to append it, use **Select m
 
 Desktop copies, metadata and queues are private to the Linux user and account under `${XDG_DATA_HOME:-~/.local/share}/rewindamp`. The AppImage uses the same storage and keyring entries as the earlier Debian package. Removing a desktop copy leaves the server file intact. Podcast downloads default to unmetered networks as reported by NetworkManager. If a setup has no metering information, enable **Allow metered downloads** explicitly to download copies.
 
+## Keyboard shortcuts
+
+| Keys | Action |
+| --- | --- |
+| Space | Play or pause |
+| Left / Right | Seek back or forward 5 seconds in music, or back 15 / forward 30 seconds in podcasts |
+| Ctrl+Left / Ctrl+Right | Previous or next track or episode |
+| Ctrl+Minus / Ctrl+Equals | Volume down or up |
+| Ctrl+F | Focus music search |
+
+Text fields, menus and focused controls retain their usual keyboard behavior. Up and Down
+still navigate the library and letter wheel, and Enter opens or queues the selected row.
+
 ## Build and test
 
 Run from the checkout root with JDK 17, curl, and the host playback dependencies installed.

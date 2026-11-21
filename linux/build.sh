@@ -17,6 +17,10 @@ fi
 if [[ -d "$out/classes/dev" ]]; then rm -r "$out/classes/dev"; fi
 mapfile -d '' sources < <(find shared/src/main/java linux/src/main/java -name '*.java' -print0)
 javac --release 17 -encoding UTF-8 -cp "$json" -d "$out/classes" "${sources[@]}"
+icon="$out/classes/dev.rewindamp.png"
+background=$(sed -n 's/.*name="launcher_background">\(#[0-9A-Fa-f]*\)<.*/\1/p' app/src/main/res/values/launcher_colors.xml)
+java -Djava.awt.headless=true linux/resources/LauncherIcon.java \
+    app/src/main/res/drawable-nodpi/ic_launcher_foreground.png "$background" "$icon"
 printf "Main-Class: dev.rewindamp.DesktopApp\nClass-Path: json-20250517.jar\n" > "$out/manifest"
 jar --create --file "$out/input/rewindamp.jar" --manifest "$out/manifest" -C "$out/classes" .
 cp linux/resources/mpris.py "$out/input/"
@@ -36,12 +40,12 @@ case "${1:-}" in
         stage=$(mktemp -d "$out/package.XXXXXXXX")
         trap 'rm -rf "$stage"' EXIT
         jpackage --type app-image --name Rewindamp --app-version "$version" --input "$out/input" --dest "$stage/image" \
-            --main-jar rewindamp.jar --main-class dev.rewindamp.DesktopApp --add-modules java.desktop,jdk.httpserver,jdk.crypto.ec
+            --icon "$icon" --main-jar rewindamp.jar --main-class dev.rewindamp.DesktopApp --add-modules java.desktop,jdk.httpserver,jdk.crypto.ec
         root="$stage/Rewindamp.AppDir"
         mv "$stage/image/Rewindamp" "$root"
         install -m755 linux/resources/AppRun "$root/"
-        install -m644 linux/resources/dev.rewindamp.desktop linux/resources/dev.rewindamp.svg "$root/"
-        ln -s dev.rewindamp.svg "$root/.DirIcon"
+        install -m644 linux/resources/dev.rewindamp.desktop "$icon" "$root/"
+        ln -s dev.rewindamp.png "$root/.DirIcon"
         install -d "$root/usr/share/doc/rewindamp"
         install -m644 LICENSE THIRD_PARTY_NOTICES.md "$root/usr/share/doc/rewindamp/"
 

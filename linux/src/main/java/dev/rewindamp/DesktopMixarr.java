@@ -146,11 +146,12 @@ final class DesktopMixarr implements AutoCloseable {
             }, cleared -> say(cleared ? "Mixarr disconnected" : "Could not clear the desktop keyring entry."));
             return;
         }
-        DesktopApp.Login login = DesktopApp.login(parent, "Connect Mixarr", store.read("mixarr-address").optString("value",
+        DesktopApp.Login login = DesktopApp.login(window, "Connect Mixarr", store.read("mixarr-address").optString("value",
             "https://mixarr.snappyapps.com.au"), true);
         if (login == null) return;
         String key = scope;
         DesktopStore account = store;
+        say("Signing in to Mixarr…");
         work(() -> {
             MixarrApi connected = MixarrApi.login(login.address(), login.user(), login.password());
             boolean saved = DesktopSecrets.save(key, new JSONObject().put("server", connected.server)
@@ -164,7 +165,30 @@ final class DesktopMixarr implements AutoCloseable {
             refreshActivity();
             if (!search.getText().isBlank() && !YouTubeSelection.isLink(search.getText().strip())) runSearch();
             else poll();
+        }, error -> {
+            String help = loginHelp(error);
+            say(help);
+            if (window.isShowing()) JOptionPane.showMessageDialog(window, help, "Mixarr sign-in failed", JOptionPane.ERROR_MESSAGE);
         });
+    }
+
+    static String loginHelp(Exception error) {
+        if (error instanceof MixarrApi.Failure failure) {
+            return switch (failure.code) {
+                case 401, 403 -> "Mixarr rejected the sign-in. Check your Mixarr username and password.";
+                case 404, 405 -> "This address did not reach the Mixarr sign-in API. Enter the Mixarr server address.";
+                case 429 -> "Mixarr is limiting sign-in attempts. Wait a moment and try again.";
+                default -> "Mixarr could not sign you in (HTTP " + failure.code + "). Check the server and try again.";
+            };
+        }
+        if (error instanceof IllegalArgumentException)
+            return "Enter the full HTTPS address for Mixarr.";
+        if (error instanceof javax.net.ssl.SSLException)
+            return "Rewindamp could not verify the Mixarr HTTPS connection. Check the address and server certificate.";
+        if (error instanceof org.json.JSONException || error instanceof ClassCastException
+            || "Mixarr did not return a session.".equals(error.getMessage()))
+            return "The server did not return a valid Mixarr session. Check the address and server setup.";
+        return "Could not connect to Mixarr. Check the server address and your network connection.";
     }
 
     private record Connected(MixarrApi api, boolean saved) {}
@@ -406,6 +430,10 @@ final class DesktopMixarr implements AutoCloseable {
     }
 
     private <T> void work(Callable<T> task, Consumer<T> success) {
+        work(task, success, error -> say(MixarrApi.message(error)));
+    }
+
+    private <T> void work(Callable<T> task, Consumer<T> success, Consumer<Exception> failure) {
         long current = generation;
         busy = true;
         submit.setEnabled(false);
@@ -423,7 +451,7 @@ final class DesktopMixarr implements AutoCloseable {
                     if (current != generation) return;
                     busy = false;
                     submit.setEnabled(true);
-                    say(MixarrApi.message(e));
+                    failure.accept(e);
                 });
             }
         });

@@ -28,8 +28,10 @@ public final class DesktopIntegrationTest {
         try {
             testDsp();
             testSkin();
+            testShortcutFocus();
             testChapters();
             testPodcastSignInErrors();
+            testMixarrSignInErrors();
             testFixture(temp);
             testAudio(temp);
             if (List.of(args).contains("--shared-fixture")) testSharedFixture(temp);
@@ -38,6 +40,43 @@ public final class DesktopIntegrationTest {
             try (var files = Files.walk(temp)) {
                 for (Path file : files.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
             }
+        }
+    }
+
+    private static void testShortcutFocus() throws Exception {
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            int space = java.awt.event.KeyEvent.VK_SPACE, left = java.awt.event.KeyEvent.VK_LEFT;
+            var search = new javax.swing.JTextField();
+            assert !DesktopApp.allowsTransportShortcut(space, search);
+            assert !DesktopApp.allowsTransportShortcut(left, search);
+            assert !DesktopApp.allowsTransportShortcut(left, new javax.swing.JSlider());
+            assert !DesktopApp.allowsTransportShortcut(space, new javax.swing.JButton());
+            assert !DesktopApp.allowsTransportShortcut(left, new javax.swing.JComboBox<>());
+            assert DesktopApp.allowsTransportShortcut(space, new javax.swing.JList<>());
+            assert DesktopApp.allowsTransportShortcut(left, new javax.swing.JList<>());
+        });
+    }
+
+    private static void testMixarrSignInErrors() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/login", exchange -> {
+            try (exchange) { exchange.sendResponseHeaders(401, -1); }
+        });
+        server.start();
+        try {
+            String address = "http://127.0.0.1:" + server.getAddress().getPort();
+            try {
+                MixarrApi.login(address, "fixture", "synthetic incorrect password");
+                throw new AssertionError("Expected Mixarr sign-in to fail");
+            } catch (MixarrApi.Failure error) {
+                assert DesktopMixarr.loginHelp(error).contains("username and password");
+            }
+            assert DesktopMixarr.loginHelp(new MixarrApi.Failure(404)).contains("server address");
+            assert DesktopMixarr.loginHelp(new MixarrApi.Failure(429)).contains("limiting");
+            assert DesktopMixarr.loginHelp(new javax.net.ssl.SSLHandshakeException("fixture"))
+                .contains("certificate");
+        } finally {
+            server.stop(0);
         }
     }
 

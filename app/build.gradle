@@ -8,8 +8,8 @@ android {
         applicationId 'dev.rewindamp'
         minSdk 26
         targetSdk 35
-        versionCode 33
-        versionName '0.4.22'
+        versionCode 34
+        versionName '0.4.23'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     // CI injects the existing certificate; local builds retain the host's debug key.
