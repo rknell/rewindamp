@@ -154,14 +154,14 @@ public final class DesktopIntegrationTest {
                 assert !downloads.complete("first") && downloads.ids().length == 0;
             }
             try (MediaSource.Relay relay = new MediaSource.Relay()) {
-                String capability = relay.add(new MediaSource(base + "/download", authorization, null));
-                HttpURLConnection range = (HttpURLConnection)URI.create(capability).toURL().openConnection();
+                var capability = relay.add(new MediaSource(base + "/download", authorization, null));
+                HttpURLConnection range = (HttpURLConnection)URI.create(capability.url).toURL().openConnection();
                 range.setRequestProperty("Range", "bytes=10-");
                 assert range.getResponseCode() == 206 && range.getHeaderField("Content-Range").equals("bytes 10-14/15");
                 range.disconnect();
                 relay.remove(capability);
-                assert response(capability) == 404;
-                assert response(relay.add(new MediaSource(base + "/redirect", authorization, null))) == 502;
+                assert response(capability.url) == 404;
+                assert response(relay.add(new MediaSource(base + "/redirect", authorization, null)).url) == 502;
                 assert redirects.get() == 0;
             }
 
@@ -373,6 +373,7 @@ public final class DesktopIntegrationTest {
         assert ffmpeg.waitFor(12, TimeUnit.SECONDS) && ffmpeg.exitValue() == 0;
         HttpServer streaming = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         byte[] flac = Files.readAllBytes(tone);
+        AtomicInteger drops = new AtomicInteger();
         streaming.createContext("/track", x -> {
             try (x) {
                 assert "Bearer synthetic-audio".equals(x.getRequestHeaders().getFirst("Authorization"));
@@ -382,7 +383,9 @@ public final class DesktopIntegrationTest {
                 int from = range == null ? 0 : Integer.parseInt(range.split("[-=]")[1]);
                 if (range != null) x.getResponseHeaders().set("Content-Range", "bytes " + from + "-" + (flac.length - 1) + "/" + flac.length);
                 x.sendResponseHeaders(range == null ? 200 : 206, flac.length - from);
-                x.getResponseBody().write(flac, from, flac.length - from);
+                int length = drops.getAndUpdate(count -> Math.max(0, count - 1)) > 0
+                    ? (flac.length - from) * 2 / 3 : flac.length - from;
+                x.getResponseBody().write(flac, from, length);
             }
         });
         streaming.start();
@@ -408,6 +411,17 @@ public final class DesktopIntegrationTest {
             engine.start(second, 1500, 1.25);
             DesktopAudio.Boundary end = events.poll(8, TimeUnit.SECONDS);
             assert end != null && end.complete() && end.finalPosition() >= 2800 && end.successor() == null : end;
+
+            drops.set(1);
+            engine.start(first, 0, 1);
+            DesktopAudio.Boundary recovered = events.poll(10, TimeUnit.SECONDS);
+            assert recovered != null && recovered.complete() && recovered.finalPosition() >= 2850 : recovered;
+
+            drops.set(100);
+            engine.start(first, 0, 1);
+            DesktopAudio.Boundary interrupted = events.poll(10, TimeUnit.SECONDS);
+            assert interrupted != null && !interrupted.complete() && interrupted.finalPosition() > 0
+                && interrupted.error().contains("audio stream was interrupted") : interrupted;
         } finally { streaming.stop(0); }
     }
 

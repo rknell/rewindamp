@@ -84,7 +84,7 @@ final class DesktopAudio implements AutoCloseable {
             Decoder decoder = null, prepared = null, outgoing = null;
             Item item = first;
             long fadeStart = 0, fadeDuration = 0, nextSpectrum = 0, offlineCheck = 0;
-            boolean fallback = false;
+            boolean fallback = false, retried = false;
             PcmEqualizer dsp = new PcmEqualizer(RATE, CHANNELS);
             ByteBuffer processed = ByteBuffer.allocate(BLOCK).order(ByteOrder.LITTLE_ENDIAN);
             try {
@@ -116,6 +116,7 @@ final class DesktopAudio implements AutoCloseable {
                             item = decoder.item;
                             position = decoder.start;
                             fallback = false;
+                            retried = false;
                             offlineCheck = position;
                         }
                         if (!decoder.local && position >= offlineCheck && outgoing == null && item.source.offline() != null) {
@@ -126,19 +127,29 @@ final class DesktopAudio implements AutoCloseable {
                             }
                         }
                         byte[] block = decoder.take();
-                        if (block == END) {
+                        if (block == null || block == END) {
                             if (outgoing != null) {
                                 outgoing.close();
                                 outgoing = null;
                             }
-                            if (decoder.failed) {
+                            boolean interrupted = !decoder.local && (block == null || decoder.stream.interrupted);
+                            if (interrupted || block == null || decoder.failed) {
                                 if (!fallback && !decoder.local && item.source.offline() != null && Files.isRegularFile(item.source.offline())) {
                                     decoder.close();
                                     decoder = new Decoder(item, position, rate);
                                     fallback = true;
                                     continue;
                                 }
-                                throw new IOException("Could not decode this audio. Check the server or offline copy.");
+                                if (interrupted && !retried) {
+                                    retried = true;
+                                    decoder.close();
+                                    Thread.sleep(350);
+                                    decoder = new Decoder(item, position, rate);
+                                    continue;
+                                }
+                                throw new IOException(interrupted ? "The audio stream was interrupted. Press Play to retry."
+                                    : block == null ? "Audio buffering timed out. Press Play to retry."
+                                    : "Could not decode this audio. Check the server or offline copy.");
                             }
                             upcoming = plan;
                             if (prepared != null && !prepared.item.equals(upcoming.item)) {
@@ -147,7 +158,8 @@ final class DesktopAudio implements AutoCloseable {
                             }
                             if (upcoming.item == null) {
                                 output.close();
-                                sink.waitFor(3, TimeUnit.SECONDS);
+                                if (sink.waitFor(3, TimeUnit.SECONDS) && sink.exitValue() != 0)
+                                    throw new IOException("The desktop audio output stopped. Press Play to retry.");
                                 changed(item, position, null, true, null);
                                 return;
                             }
@@ -162,6 +174,7 @@ final class DesktopAudio implements AutoCloseable {
                             item = decoder.item;
                             position = decoder.start;
                             fallback = false;
+                            retried = false;
                             offlineCheck = position;
                             continue;
                         }
@@ -194,7 +207,8 @@ final class DesktopAudio implements AutoCloseable {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (IOException | RuntimeException e) {
-                changed(item, position, null, false, e.getMessage());
+                changed(item, position, null, false,
+                    sink != null && !sink.isAlive() ? "The desktop audio output stopped. Press Play to retry." : e.getMessage());
             } finally {
                 if (decoder != null) decoder.close();
                 if (prepared != null) prepared.close();
@@ -212,7 +226,7 @@ final class DesktopAudio implements AutoCloseable {
         final Item item;
         final long start;
         final Process process;
-        final String stream;
+        final MediaSource.Relay.Route stream;
         final boolean local;
         final ArrayBlockingQueue<byte[]> buffer = new ArrayBlockingQueue<>(16);
         final Thread reader;
@@ -243,7 +257,7 @@ final class DesktopAudio implements AutoCloseable {
                 try (var input = started.getOutputStream()) {
                     if (!local) {
                         // Keep the temporary relay route out of process arguments and logs.
-                        String manifest = "ffconcat version 1.0\nfile '" + stream + "'\n";
+                        String manifest = "ffconcat version 1.0\nfile '" + stream.url + "'\n";
                         if (item.duration > 0) manifest += "duration " + item.duration / 1000.0 + "\n";
                         input.write(manifest.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
                     }
@@ -275,10 +289,9 @@ final class DesktopAudio implements AutoCloseable {
 
         boolean ready() { byte[] next = buffer.peek(); return next != null && next != END; }
         byte[] poll() { return buffer.poll(); }
-        byte[] take() throws IOException, InterruptedException {
+        byte[] take() throws InterruptedException {
             byte[] next = buffer.poll(25, TimeUnit.SECONDS);
-            if (next == null) throw new IOException("Audio buffering timed out");
-            lastBytes = next.length;
+            if (next != null) lastBytes = next.length;
             return next;
         }
         @Override public void close() {
