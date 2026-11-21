@@ -75,10 +75,10 @@ jobs:
           profile: pixel_2
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: |
+          script: >-
             if grep -q 'void signsInWithNamedAccountAndPreservesSeparateStorage' app/src/androidTest/java/dev/rewindamp/PodcastIntegrationTest.java; then
-              export PODCAST_TEST_CLASSES="dev.rewindamp.PodcastIntegrationTest#signsInWithNamedAccountAndPreservesSeparateStorage,$PODCAST_TEST_CLASSES"
-            fi
+            export PODCAST_TEST_CLASSES="dev.rewindamp.PodcastIntegrationTest#signsInWithNamedAccountAndPreservesSeparateStorage,$PODCAST_TEST_CLASSES";
+            fi;
             ./scripts/podcast-integration-test.sh
       - name: Preserve emulator test diagnostics
         if: failure()
