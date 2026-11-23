@@ -118,6 +118,21 @@ public class PodcastQueueIntegrationTest {
             main(browser::connect);helpers.waitFor(()->{boolean[] connected={false};main(()->connected[0]=browser.isConnected());return connected[0];});
             main(()->{legacy[0]=new android.media.session.MediaController(context,browser.getSessionToken());controller.pause();controller.seekTo(20000);});
             helpers.waitFor(()->positionNear(controller,20000));
+            main(()->{
+                var state=legacy[0].getPlaybackState();
+                var actions=state.getCustomActions();
+                assertEquals(2,actions.size());
+                assertEquals("Jump back 15 seconds",actions.get(0).getName().toString());
+                assertEquals("Jump forward 30 seconds",actions.get(1).getName().toString());
+                assertEquals(0,state.getActions() & (android.media.session.PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                        | android.media.session.PlaybackState.ACTION_SKIP_TO_NEXT));
+                legacy[0].getTransportControls().sendCustomAction(actions.get(1),null);
+            });
+            awaitPosition(controller,50000);
+            main(()->legacy[0].getTransportControls().sendCustomAction(legacy[0].getPlaybackState().getCustomActions().get(0),null));
+            awaitPosition(controller,35000);
+            main(()->{assertEquals(0,controller.getCurrentMediaItemIndex());controller.seekTo(20000);});
+            awaitPosition(controller,20000);
             main(()->legacy[0].getTransportControls().skipToNext());helpers.waitFor(()->positionNear(controller,50000));
             main(()->legacy[0].getTransportControls().skipToPrevious());helpers.waitFor(()->positionNear(controller,35000));
             main(()->{legacy[0].dispatchMediaButtonEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_MEDIA_NEXT));legacy[0].dispatchMediaButtonEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,android.view.KeyEvent.KEYCODE_MEDIA_NEXT));});helpers.waitFor(()->positionNear(controller,65000));

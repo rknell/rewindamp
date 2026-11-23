@@ -1,5 +1,6 @@
 package dev.rewindamp;
 
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import androidx.media3.common.C;
@@ -8,9 +9,13 @@ import androidx.media3.common.Player;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.session.CommandButton;
 import androidx.media3.session.MediaLibraryService;
 import androidx.media3.session.MediaSession;
 import androidx.media3.session.LibraryResult;
+import androidx.media3.session.SessionCommand;
+import androidx.media3.session.SessionCommands;
+import androidx.media3.session.SessionResult;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -24,6 +29,15 @@ import java.util.concurrent.Executors;
 /** Spoken audio session: independent episode history and rewind/forward commands, no crossfade. */
 @androidx.annotation.OptIn(markerClass=androidx.media3.common.util.UnstableApi.class)
 public final class PodcastPlaybackService extends MediaLibraryService {
+    private static final SessionCommand BACK_15 = new SessionCommand("dev.rewindamp.podcast.BACK_15", Bundle.EMPTY);
+    private static final SessionCommand FORWARD_30 = new SessionCommand("dev.rewindamp.podcast.FORWARD_30", Bundle.EMPTY);
+    private static final List<CommandButton> NOW_PLAYING_BUTTONS = List.of(
+            new CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
+                    .setDisplayName("Jump back 15 seconds").setSessionCommand(BACK_15)
+                    .setSlots(CommandButton.SLOT_BACK).build(),
+            new CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_30)
+                    .setDisplayName("Jump forward 30 seconds").setSessionCommand(FORWARD_30)
+                    .setSlots(CommandButton.SLOT_FORWARD).build());
     private MediaLibrarySession session;
     private ExoPlayer player;
     private PodcastLibrary library;
@@ -49,7 +63,14 @@ public final class PodcastPlaybackService extends MediaLibraryService {
         }
         player.addListener(new Player.Listener(){
             @Override public void onIsPlayingChanged(boolean playing){if(playing)LastPlayback.record(PodcastPlaybackService.this,true);}
-            @Override public void onEvents(Player p,Player.Events events){checkpoint();if(session!=null&&events.contains(Player.EVENT_AVAILABLE_COMMANDS_CHANGED))for(MediaSession.ControllerInfo controller:session.getConnectedControllers())session.setAvailableCommands(controller,MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS,controllerCommands(controller));}
+            @Override public void onEvents(Player p, Player.Events events) {
+                checkpoint();
+                if (session == null || !events.contains(Player.EVENT_AVAILABLE_COMMANDS_CHANGED)) return;
+                SessionCommands commands = sessionCommands();
+                for (MediaSession.ControllerInfo controller : session.getConnectedControllers()) {
+                    session.setAvailableCommands(controller, commands, controllerCommands(controller));
+                }
+            }
             @Override public void onPositionDiscontinuity(Player.PositionInfo old,Player.PositionInfo next,int reason){if(library!=null&&old.mediaItem!=null&&!old.mediaItem.mediaId.equals(next.mediaItem==null?"":next.mediaItem.mediaId)){
                     library.event(old.mediaItem.mediaId,old.positionMs,reason==Player.DISCONTINUITY_REASON_AUTO_TRANSITION?"played":"progress");
                     if(next.mediaItem!=null){JSONObject episode=library.episode(next.mediaItem.mediaId);long resume=episode.optString("state").equals("played")?0:(long)(episode.optDouble("position")*1000);if(resume>0&&next.positionMs==0)player.seekTo(resume);}
@@ -91,6 +112,12 @@ public final class PodcastPlaybackService extends MediaLibraryService {
             for(int command:new int[]{Player.COMMAND_SEEK_TO_NEXT,Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,Player.COMMAND_SEEK_TO_PREVIOUS,Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM})if(!player.isCommandAvailable(command))commands.remove(command);
         return commands.build();
     }
+    private SessionCommands sessionCommands() {
+        var commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon();
+        if (player.isCommandAvailable(Player.COMMAND_SEEK_BACK)) commands.add(BACK_15);
+        if (player.isCommandAvailable(Player.COMMAND_SEEK_FORWARD)) commands.add(FORWARD_30);
+        return commands.build();
+    }
     private void checkSleep(){
         if(library==null)return;JSONObject timer=library.store.read("podcast-sleep");long until=timer.optLong("until");boolean end=timer.optBoolean("end");
         if(end&&player.getCurrentMediaItem()!=null&&!timer.optString("id").equals(player.getCurrentMediaItem().mediaId)){library.clearSleep();end=false;}
@@ -128,8 +155,18 @@ public final class PodcastPlaybackService extends MediaLibraryService {
         }
         @Override public MediaSession.ConnectionResult onConnect(MediaSession s,MediaSession.ControllerInfo c){
             if(c.getUid()!=android.os.Process.myUid()&&!c.isTrusted())return MediaSession.ConnectionResult.reject();
-            var commands=controllerCommands(c);
-            return new MediaSession.ConnectionResult.AcceptedResultBuilder(s).setAvailablePlayerCommands(commands).setAvailableSessionCommands(MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS).build();
+            var result = new MediaSession.ConnectionResult.AcceptedResultBuilder(s)
+                    .setAvailablePlayerCommands(controllerCommands(c)).setAvailableSessionCommands(sessionCommands());
+            // System UI renders these as platform custom actions next to Play/Pause.
+            if (s.isMediaNotificationController(c)) result.setMediaButtonPreferences(NOW_PLAYING_BUTTONS);
+            return result.build();
+        }
+        @Override public ListenableFuture<SessionResult> onCustomCommand(
+                MediaSession s, MediaSession.ControllerInfo c, SessionCommand command, Bundle args) {
+            if (BACK_15.equals(command)) player.seekBack();
+            else if (FORWARD_30.equals(command)) player.seekForward();
+            else return MediaLibrarySession.Callback.super.onCustomCommand(s, c, command, args);
+            return Futures.immediateFuture(new SessionResult(SessionResult.RESULT_SUCCESS));
         }
         @Override public ListenableFuture<LibraryResult<MediaItem>> onGetLibraryRoot(MediaLibrarySession s,MediaSession.ControllerInfo c,LibraryParams p){return Futures.immediateFuture(LibraryResult.ofItem(CarLibrary.folder("podcasts","Rewindamp Podcasts"),p));}
         @Override public ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> onGetChildren(MediaLibrarySession s,MediaSession.ControllerInfo c,String id,int page,int size,LibraryParams p){

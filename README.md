@@ -53,7 +53,7 @@ password. Podcast discovery uses the Rewindamp server and requires no Apple acco
 Podcast controls rewind 15 seconds or advance 30 seconds; playback speed, resume position,
 played/dismissed/reset actions and app-private phone downloads are separate from music.
 The clean Android application ID is `dev.rewindamp`. It installs separately from Jellyamp;
-old Jellyamp app data is not automatically migrated. Current source version is **0.4.23**.
+old Jellyamp app data is not automatically migrated. Current source version is **0.4.25**.
 Music and podcast decks share a horizontal metal destination wheel for Music / Podcasts /
 Queue, including their connection screens. Dragging highlights each newly selected
 destination in green and gives a haptic tick at every detent, like the vertical letter
@@ -81,6 +81,7 @@ a playing queue; starting another episode creates a new queue from that view. Au
 completion marks the finished episode played. Queue, position and speed restore paused
 after a service restart. Tap an episode row to play or resume it. In-progress episodes show a small progress line and remaining time; the overflow menu retains played/reset, dismiss and phone-copy actions.
 
+Android's podcast media card shows **15 seconds back** and **30 seconds forward** next to Play/Pause.
 Regular Bluetooth/car next and previous controls seek forward 30 seconds and back 15 seconds
 within the current podcast, including single-episode queues. The phone’s Previous/Next episode
 buttons and queue selection still change episodes; music transport behavior is unchanged.
