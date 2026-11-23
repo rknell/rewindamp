@@ -67,7 +67,7 @@ jobs:
       - name: Isolated car and podcast regression tests
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          PODCAST_TEST_CLASSES: dev.rewindamp.AdvancedIntegrationTest#serviceDspBypassesSpectrumWhenTheDisplayIsHidden,dev.rewindamp.AdvancedIntegrationTest#tenBandEqualizerChangesFrequencyResponseAndSpectrumReflectsAudio,dev.rewindamp.AutoIntegrationTest,dev.rewindamp.PodcastQueueIntegrationTest#launcherReturnsToPodcastsAndMarkingKeepsScrolledRows,dev.rewindamp.PodcastQueueIntegrationTest#allAvailableEpisodesIncludesPlayedWithSettingOff,dev.rewindamp.LibraryUxIntegrationTest#playlistMenuAddsAllInOrderWithoutScrollingOrReplacingQueue
+          PODCAST_TEST_CLASSES: dev.rewindamp.AdvancedIntegrationTest#serviceDspBypassesSpectrumWhenTheDisplayIsHidden,dev.rewindamp.AdvancedIntegrationTest#tenBandEqualizerChangesFrequencyResponseAndSpectrumReflectsAudio,dev.rewindamp.PodcastQueueIntegrationTest#launcherReturnsToPodcastsAndMarkingKeepsScrolledRows,dev.rewindamp.PodcastQueueIntegrationTest#allAvailableEpisodesIncludesPlayedWithSettingOff,dev.rewindamp.LibraryUxIntegrationTest#playlistMenuAddsAllInOrderWithoutScrollingOrReplacingQueue
           PODCAST_CAPTURE_SCREENSHOTS: 'false'
         with:
           api-level: 35
@@ -76,6 +76,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: |
+            PODCAST_TEST_CLASSES=dev.rewindamp.AutoIntegrationTest ./scripts/podcast-integration-test.sh
             ./scripts/podcast-integration-test.sh
             if grep -q 'void bluetoothButtonsAndLegacySkipsSeekWithinEpisode' app/src/androidTest/java/dev/rewindamp/PodcastQueueIntegrationTest.java; then PODCAST_TEST_CLASSES=dev.rewindamp.PodcastQueueIntegrationTest#bluetoothButtonsAndLegacySkipsSeekWithinEpisode ./scripts/podcast-integration-test.sh; fi
             if grep -q 'void signsInWithNamedAccountAndPreservesSeparateStorage' app/src/androidTest/java/dev/rewindamp/PodcastIntegrationTest.java; then PODCAST_TEST_CLASSES=dev.rewindamp.PodcastIntegrationTest#signsInWithNamedAccountAndPreservesSeparateStorage ./scripts/podcast-integration-test.sh; fi
