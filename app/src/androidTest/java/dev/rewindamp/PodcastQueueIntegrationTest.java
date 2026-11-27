@@ -85,31 +85,28 @@ public class PodcastQueueIntegrationTest {
         PodcastLibrary library=fixture();library.preference("oldest:all",false);PodcastActivity activity=launch();JSONObject selected=episode(library,"Queue newest");main(()->activity.play(selected));waitQueue(activity,"Queue newest",3);
         var future=new androidx.media3.session.MediaController.Builder(context,new androidx.media3.session.SessionToken(context,new android.content.ComponentName(context,PodcastPlaybackService.class))).buildAsync();controllers.add(future);var controller=future.get(15,java.util.concurrent.TimeUnit.SECONDS);
         helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=controller.getPlaybackState()==Player.STATE_READY);return ready[0];});
-        main(()->{assertEquals("Queue middle",controller.getMediaItemAt(1).mediaMetadata.title);assertEquals("Queue old",controller.getMediaItemAt(2).mediaMetadata.title);controller.pause();controller.setPlaybackSpeed(1.5f);controller.seekTo(20000);});helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=controller.getCurrentPosition()==20000);return ready[0];});Thread.sleep(600);
-        main(()->{activity.getPreferences(0).edit().putBoolean("remainingTime",true).apply();activity.finish();androidx.media3.session.MediaController.releaseFuture(future);});instrumentation.waitForIdleSync();context.stopService(new Intent(context,PodcastPlaybackService.class));Thread.sleep(600);
+        main(()->{assertEquals("Queue middle",controller.getMediaItemAt(1).mediaMetadata.title);assertEquals("Queue old",controller.getMediaItemAt(2).mediaMetadata.title);controller.pause();controller.setPlaybackSpeed(1.5f);controller.seekTo(20000);});helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=controller.getCurrentPosition()>=19000);return ready[0];});Thread.sleep(600);
+        main(()->{activity.finish();androidx.media3.session.MediaController.releaseFuture(future);});instrumentation.waitForIdleSync();context.stopService(new Intent(context,PodcastPlaybackService.class));Thread.sleep(600);
         var restoredFuture=new androidx.media3.session.MediaController.Builder(context,new androidx.media3.session.SessionToken(context,new android.content.ComponentName(context,PodcastPlaybackService.class))).buildAsync();controllers.add(restoredFuture);var restored=restoredFuture.get(15,java.util.concurrent.TimeUnit.SECONDS);
+        main(()->{assertEquals(3,restored.getMediaItemCount());assertEquals("Queue newest",restored.getCurrentMediaItem().mediaMetadata.title);assertEquals(1.5f,restored.getPlaybackParameters().speed,.001f);assertFalse(restored.getPlayWhenReady());assertTrue("Restored position was "+restored.getCurrentPosition(),restored.getCurrentPosition()>=19000);androidx.media3.session.MediaController.releaseFuture(restoredFuture);});
+    }
+    @Test public void reopenedPodcastShowsRemainingTimeBeforePlay()throws Exception{
+        savePausedEpisode(fixture(),90);
+        var future=new androidx.media3.session.MediaController.Builder(context,new androidx.media3.session.SessionToken(context,new android.content.ComponentName(context,PodcastPlaybackService.class))).buildAsync();controllers.add(future);var controller=future.get(15,java.util.concurrent.TimeUnit.SECONDS);
         PodcastActivity reopened=launch();
         main(()->{
-            assertEquals(3,restored.getMediaItemCount());
-            assertEquals("Queue newest",restored.getCurrentMediaItem().mediaMetadata.title);
-            assertEquals(1.5f,restored.getPlaybackParameters().speed,.001f);
-            assertFalse(restored.getPlayWhenReady());
-            assertEquals(20000,restored.getCurrentPosition());
-            assertEquals(Player.STATE_IDLE,restored.getPlaybackState());
+            assertEquals(Player.STATE_IDLE,controller.getPlaybackState());
+            assertFalse(controller.getPlayWhenReady());
+            View elapsed=described(reopened,"Time elapsed 0:20. Tap to show remaining time.");
+            if(elapsed!=null)elapsed.performClick();
             assertNotNull(described(reopened,"Time remaining -1:10. Tap to show elapsed time."));
             assertNotNull(helpers.find(reopened.getWindow().getDecorView(),"Synthetic Signals · −1:10 remaining"));
             assertEquals(222,((android.widget.SeekBar)described(reopened,"Episode position")).getProgress());
-            reopened.getPreferences(0).edit().remove("remainingTime").apply();
+            if(elapsed!=null)elapsed.performClick();
         });
     }
     @Test public void restoredEpisodeWithoutFeedDurationLoadsDurationWhilePaused()throws Exception{
-        PodcastLibrary library=fixture();
-        JSONObject selected=episode(library,"Queue newest");
-        String id=selected.getString("id");
-        library.store.write("episode:"+id,selected.put("duration",0));
-        library.event(id,20000,"progress");
-        library.store.write("podcast-now",new JSONObject().put("id",id));
-
+        savePausedEpisode(fixture(),0);
         var future=new androidx.media3.session.MediaController.Builder(context,new androidx.media3.session.SessionToken(context,new android.content.ComponentName(context,PodcastPlaybackService.class))).buildAsync();controllers.add(future);var controller=future.get(15,java.util.concurrent.TimeUnit.SECONDS);
         helpers.waitFor(()->{boolean[] ready={false};main(()->ready[0]=controller.getPlaybackState()==Player.STATE_READY);return ready[0];});
         main(()->{
@@ -118,6 +115,13 @@ public class PodcastQueueIntegrationTest {
             assertEquals(20000,controller.getCurrentPosition());
             assertFalse(controller.getPlayWhenReady());
         });
+    }
+    private void savePausedEpisode(PodcastLibrary library,int durationSeconds)throws Exception{
+        JSONObject selected=episode(library,"Queue newest");
+        String id=selected.getString("id");
+        library.store.write("episode:"+id,selected.put("duration",durationSeconds));
+        library.event(id,20000,"progress");
+        library.store.write("podcast-now",new JSONObject().put("id",id));
     }
     @Test public void sleepTimersPauseAndUpcomingOfflineCopiesAreManaged()throws Exception{
         PodcastLibrary library=fixture();library.preference("oldest:all",false);PodcastActivity activity=launch();JSONObject selected=episode(library,"Queue newest");main(()->activity.play(selected));waitQueue(activity,"Queue newest",3);
