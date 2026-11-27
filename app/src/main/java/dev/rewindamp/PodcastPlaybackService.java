@@ -58,7 +58,13 @@ public final class PodcastPlaybackService extends MediaLibraryService {
             JSONObject saved=library.store.read("podcast-now");String id=saved.optString("id");JSONArray ids=saved.optJSONArray("queue");List<MediaItem> restored=new ArrayList<>();int index=0;
             if(ids!=null)for(int i=0;i<ids.length();i++){JSONObject e=library.episode(ids.optString(i));if(e.has("id")){if(e.optString("id").equals(id))index=restored.size();restored.add(library.media(e));}}
             if(restored.isEmpty()){JSONObject e=library.episode(id);if(e.has("id"))restored.add(library.media(e));}
-            if(!restored.isEmpty()){JSONObject e=library.episode(restored.get(index).mediaId);player.setMediaItems(restored,index,(long)(e.optDouble("position")*1000));active=restored.get(index).mediaId;position=player.getCurrentPosition();}
+            if(!restored.isEmpty()){
+                MediaItem current=restored.get(index);
+                JSONObject episode=library.episode(current.mediaId);
+                player.setMediaItems(restored,index,(long)(episode.optDouble("position")*1000));
+                active=current.mediaId;position=player.getCurrentPosition();
+                if(position>0&&current.mediaMetadata.durationMs==null)player.prepare();
+            }
             player.setPlaybackSpeed((float)saved.optDouble("speed",1));
         }
         player.addListener(new Player.Listener(){

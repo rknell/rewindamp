@@ -68,8 +68,9 @@ final class PodcastLibrary extends PodcastState {
     void remove(String id){DownloadService.sendRemoveDownload(context,PodcastDownloadService.class,id,true);}
     MediaItem media(JSONObject episode){try{
         String id=episode.getString("id");Bundle extras=new Bundle();extras.putString("podcast",id);
+        long durationMs=(long)(episode.optDouble("duration",0)*1000);
         return new MediaItem.Builder().setMediaId(id).setUri(api.audio(id)).setCustomCacheKey(id)
-            .setMediaMetadata(new MediaMetadata.Builder().setTitle(episode.optString("title")).setArtist(episode.optString("show_title")).setIsPlayable(true).setIsBrowsable(false).setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE).setExtras(extras).build()).build();
+            .setMediaMetadata(new MediaMetadata.Builder().setTitle(episode.optString("title")).setArtist(episode.optString("show_title")).setDurationMs(durationMs>0?durationMs:null).setIsPlayable(true).setIsBrowsable(false).setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE).setExtras(extras).build()).build();
     }catch(Exception e){throw new IllegalArgumentException("Invalid episode",e);}}
     static synchronized void pause(Context context){if(instance!=null)instance.manager.pauseDownloads();context.stopService(new android.content.Intent(context,PodcastDownloadService.class));}
 }

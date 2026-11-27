@@ -12,6 +12,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
+import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
 import androidx.media3.session.MediaController;
 import androidx.media3.session.SessionToken;
@@ -133,16 +134,29 @@ public final class PodcastActivity extends Activity {
     }
     void updateClock(){
         if(clock==null)return;
-        boolean hasTrack=player!=null&&player.getCurrentMediaItem()!=null;
-        long position=hasTrack?Math.max(0,player.getCurrentPosition()):0,duration=hasTrack?player.getDuration():0;
-        String value=remainingTime?(hasTrack&&duration<0?"--:--":"-"+Track.time(Math.max(0,duration-position))):Track.time(position);
+        MediaItem item=player==null?null:player.getCurrentMediaItem();
+        long position=item==null?0:Math.max(0,player.getCurrentPosition());
+        updateClock(item,position,displayDuration(item));
+    }
+    private long displayDuration(MediaItem item){
+        if(item==null)return 0;
+        long duration=player.getDuration();
+        Long savedDuration=item.mediaMetadata.durationMs;
+        if(duration>0)return duration;
+        return savedDuration==null?0:savedDuration;
+    }
+    private void updateClock(MediaItem item,long position,long duration){
+        String value=remainingTime?(item!=null&&duration<=0?"--:--":"-"+Track.time(duration-position)):Track.time(position);
         clock.setTime(value);clock.setContentDescription((remainingTime?"Time remaining ":"Time elapsed ")+value+". Tap to show "+(remainingTime?"elapsed":"remaining")+" time.");
     }
     void update(){
         if(library!=null&&System.currentTimeMillis()-downloadUpdated>1500){downloadUpdated=System.currentTimeMillis();for(var entry:downloadLabels.entrySet()){String label=library.label(entry.getKey());if(!label.isBlank()){entry.getValue().setVisibility(View.VISIBLE);setLabel(entry.getValue(),label);}}}
-        updateClock();if(player==null||clock==null)return;long position=Math.max(0,player.getCurrentPosition());
-        if(player.getCurrentMediaItem()!=null){var meta=player.getCurrentMediaItem().mediaMetadata;setLabel(title,meta.title);setLabel(artist,meta.artist+" · "+(player.getDuration()>0?"−"+Track.time(Math.max(0,player.getDuration()-position))+" remaining":"Duration unknown")+(library.sleepDescription().equals("off")?"":" · Sleep "+library.sleepDescription()));}
-        long duration=player.getDuration();if(!seeking)seek.setProgress(duration>0?(int)(1000*position/duration):0);
+        if(player==null||clock==null)return;
+        MediaItem item=player.getCurrentMediaItem();
+        long position=item==null?0:Math.max(0,player.getCurrentPosition()),duration=displayDuration(item);
+        updateClock(item,position,duration);
+        if(item!=null){var meta=item.mediaMetadata;setLabel(title,meta.title);setLabel(artist,meta.artist+" · "+(duration>0?"−"+Track.time(duration-position)+" remaining":"Duration unknown")+(library.sleepDescription().equals("off")?"":" · Sleep "+library.sleepDescription()));}
+        if(!seeking)seek.setProgress(duration>0?(int)(1000*Math.min(position,duration)/duration):0);
         playPause.setEnabled(true);boolean playing=player.getPlayWhenReady();((Retro.MetalButton)playPause).icon(playing?"pause":"play");playPause.setTooltipText(playing?"Pause":"Play");
         previous.setEnabled(player.hasPreviousMediaItem());previous.setAlpha(previous.isEnabled()?1f:.4f);next.setEnabled(player.hasNextMediaItem());next.setAlpha(next.isEnabled()?1f:.4f);
         setLabel(speed,player.getPlaybackParameters().speed+"×");
